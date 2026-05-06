@@ -90,6 +90,33 @@ def list_folder_contents(folder_id: int = 0) -> str:
 
 
 @mcp.tool()
+def list_projects(sort: str = "title") -> str:
+    """List all projects (top-level workspaces) visible to the current API key.
+
+    Returns each project's obj_id (project_id), title, short_name, childs count,
+    size (process count), and privs. Use the returned obj_id as the folder_id in
+    list_folder_contents to browse inside a project.
+
+    Args:
+        sort: Sort field — "title" (default, alphabetical) or "date".
+    """
+    try:
+        all_projects: list = []
+        offset = 0
+        limit = 200
+        while True:
+            result = client.list_projects(sort=sort, limit=limit, offset=offset)
+            batch = result["ops"][0].get("list", [])
+            all_projects.extend(batch)
+            if len(batch) < limit:
+                break
+            offset += limit
+        return _minify({"projects": all_projects, "total": len(all_projects)})
+    except Exception as exc:
+        return _error_response(exc)
+
+
+@mcp.tool()
 def list_aliases(project_id: int, stage_id: int) -> str:
     """List all aliases in a project stage."""
     try:
@@ -253,6 +280,17 @@ def list_task_history(process_id: int, task_id: str) -> str:
     Note: 'data' in each history entry is always null; use show_task for current data."""
     try:
         return _minify(client.list_task_history(process_id, task_id))
+    except Exception as exc:
+        return _error_response(exc)
+
+
+@mcp.tool()
+def list_node_tasks(process_id: int, node_id: str, limit: int = 50, offset: int = 0) -> str:
+    """Return tasks currently sitting in a specific node of a process.
+    ops[0]['list'] contains task objects with task_id, ref, and data.
+    ops[0]['count'] is the total number of tasks in the node."""
+    try:
+        return _minify(client.list_node_tasks(process_id, node_id, limit=limit, offset=offset))
     except Exception as exc:
         return _error_response(exc)
 

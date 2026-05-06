@@ -72,7 +72,32 @@ class CorezoidClient:
             }]
         }
         return self.make_request(payload)
-    
+
+    def list_projects(self, sort="title", limit=200, offset=0):
+        """List all projects (top-level workspaces) visible to the current API key.
+
+        Args:
+            sort:   Field to sort by — "title" (default) or "date".
+            limit:  Max number of projects to return (default 200).
+            offset: Pagination offset (default 0).
+
+        Returns:
+            Raw API response. The project list is at ops[0]["list"]; each entry
+            contains obj_id (project_id), title, short_name, childs, size, privs.
+        """
+        payload = {
+            "ops": [{
+                "type": "list",
+                "obj": "projects",
+                "obj_id": 0,
+                "id": self.company_id,
+                "company_id": self.company_id,
+                "sort": sort,
+                "params": {"limit": limit, "offset": offset},
+            }]
+        }
+        return self.make_request(payload)
+
     def list_aliases(self, project_id, stage_id):
         """List all aliases in a stage.
         
@@ -1576,6 +1601,32 @@ class CorezoidClient:
                 "obj": "task_history",
                 "conv_id": process_id,
                 "obj_id": task_id,
+            }]
+        })
+
+    def list_node_tasks(self, process_id, node_id, limit=50, offset=0):
+        """Return tasks currently sitting in a specific node of a process.
+
+        Args:
+            process_id: Numeric process (conv) ID.
+            node_id: 24-character hex node ID.
+            limit: Maximum number of tasks to return (default 50).
+            offset: Zero-based pagination offset (default 0).
+
+        Returns:
+            API response dict.  ``ops[0]['list']`` is an array of task objects,
+            each containing ``task_id``, ``ref``, and ``data``.
+            ``ops[0]['count']`` is the total number of tasks in the node.
+        """
+        return self.make_request({
+            "ops": [{
+                "type": "list",
+                "obj": "node",
+                "company_id": self.company_id,
+                "conv_id": process_id,
+                "obj_id": node_id,
+                "limit": limit,
+                "offset": offset,
             }]
         })
 
