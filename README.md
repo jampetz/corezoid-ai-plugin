@@ -65,6 +65,15 @@ codex plugin install corezoid@corezoid
 
 No build step, no extra setup. The MCP server starts automatically on first use.
 
+### Updating
+
+```bash
+claude plugin update corezoid   # Claude Code
+codex plugin update corezoid    # Codex
+```
+
+Restart Claude Code / Codex after updating to apply the new version.
+
 ## Authentication
 
 On the first Corezoid operation Claude detects that no token is present and runs the `login` tool automatically — your browser opens for OAuth2 sign-in and the session continues without interruption.

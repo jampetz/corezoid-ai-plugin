@@ -33,35 +33,35 @@ When `login` returns "Setup complete", proceed to **Step 2**.
 
 ## Mode B — Elicitation not supported (chat-based collection)
 
-When elicitation is unavailable, `login` returns instructions for each missing value. Follow this sequence:
+When elicitation is unavailable, drive the setup yourself using explicit tool calls. Follow this sequence:
 
 ### B1 — Collect Account URL
 
-`login` returns: *"Please ask the user for their Corezoid Account API URL..."*
-
-→ Ask the user: **"What is your Corezoid Account API URL? (e.g. https://account.corezoid.com)"**
+→ Ask the user: **"What is your Corezoid Account URL? (e.g. https://account.corezoid.com)"**
 
 → Call `login(account_url=<value>)`
 
-The tool then opens a browser for OAuth2 authentication.
+The tool opens a browser for OAuth2 authentication and saves the token.
 
 ### B2 — Select Workspace
 
-After OAuth, `login` returns a list of available workspaces and asks you to select one.
+→ Call **`list-workspaces`**
 
 → Show the workspace list to the user and ask which one to use.
 
-→ Call `login(workspace_id=<selected_id>)`
+### B3 — Select Project
 
-### B3 — Select Stage
-
-`login` returns a list of projects and asks you to select a stage.
+→ Call **`list-projects(company_id=<workspace_id>)`**
 
 → Show the project list to the user and ask which project they want to use.
 
-→ Call **`list-stages(project_id=<id>, company_id=<workspace_id>)`** to see available stages for that project.
+### B4 — Select Stage
+
+→ Call **`list-stages(project_id=<id>, company_id=<workspace_id>)`**
 
 → Show the stage list to the user and ask which stage (root folder) to use.
+
+### B5 — Commit selection
 
 → Call `login(workspace_id=<workspace_id>, stage_id=<stage_id>)`
 

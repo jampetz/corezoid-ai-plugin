@@ -938,7 +938,7 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 					accountURL = "https://account.corezoid.com"
 				} else if action != "accept" {
 					logger.Info("login: user cancelled COREZOID_ACCOUNT_URL elicitation (action=%q)", action)
-					return "Please ask the user for their Corezoid Account API URL (e.g. https://account.corezoid.com), then call the login tool again with account_url=<value>.", false
+					return "Please ask the user for their Corezoid Account URL (e.g. https://account.corezoid.com), then call the login tool again with account_url=<value>.", false
 				} else {
 					if v, _ := content["account_url"].(string); v != "" {
 						accountURL = v
@@ -947,7 +947,7 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 					}
 				}
 			} else {
-				return "Please ask the user for their Corezoid Account API URL (e.g. https://account.corezoid.com), then call the login tool again with account_url=<value>.", false
+				return "Please ask the user for their Corezoid Account URL (e.g. https://account.corezoid.com), then call the login tool again with account_url=<value>.", false
 			}
 			os.Setenv("COREZOID_ACCOUNT_URL", accountURL)
 			if err := updateEnvFile(envPath, "COREZOID_ACCOUNT_URL", accountURL); err != nil {
