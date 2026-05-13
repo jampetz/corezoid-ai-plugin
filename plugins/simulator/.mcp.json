@@ -1,0 +1,10 @@
+{
+  "simulator": {
+    "command": "sh",
+    "args": ["-c", "cd \"$CLAUDE_PLUGIN_ROOT/mcp-server\" && exec go run . --spec simulator ${SIMULATOR_TOKEN:+--authorization \"Simulator $SIMULATOR_TOKEN\"} ${SIMULATOR_URL:+--url \"$SIMULATOR_URL\"}"],
+    "env": {
+      "SIMULATOR_TOKEN": "${SIMULATOR_TOKEN}",
+      "SIMULATOR_URL": "${SIMULATOR_URL}"
+    }
+  }
+}
