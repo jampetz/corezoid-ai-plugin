@@ -270,7 +270,7 @@ func ensureTokenAuth() error {
 		}
 	}
 	if apiToken == "" {
-		return fmt.Errorf("[Error] Not authenticated: missing [SIMULATOR_TOKEN]. Invoke the 'corezoid-init' skill to set up credentials (use the Skill tool with skill=\"corezoid-init\").")
+		return fmt.Errorf("[Error] Not authenticated: missing [ACCESS_TOKEN]. Invoke the 'corezoid-init' skill to set up credentials (use the Skill tool with skill=\"corezoid-init\").")
 	}
 	return nil
 }
@@ -284,10 +284,10 @@ func ensureAuth() error {
 
 	var missing []string
 	if accountURL == "" {
-		missing = append(missing, "COREZOID_ACCOUNT_URL")
+		missing = append(missing, "ACCOUNT_URL")
 	}
 	if workspaceID == "" {
-		missing = append(missing, "COREZOID_WORKSPACE_ID")
+		missing = append(missing, "WORKSPACE_ID")
 	}
 	if stageID == 0 {
 		missing = append(missing, "COREZOID_STAGE_ID")
@@ -906,16 +906,16 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 		// Apply any values passed directly as arguments (bypasses elicitation).
 		if v := optStrArg(args, "account_url"); v != "" && accountURL == "" {
 			accountURL = v
-			os.Setenv("COREZOID_ACCOUNT_URL", v)
-			if err := updateEnvFile(envPath, "COREZOID_ACCOUNT_URL", v); err != nil {
-				logger.Warn("login: could not save COREZOID_ACCOUNT_URL from arg: %v", err)
+			os.Setenv("ACCOUNT_URL", v)
+			if err := updateEnvFile(envPath, "ACCOUNT_URL", v); err != nil {
+				logger.Warn("login: could not save ACCOUNT_URL from arg: %v", err)
 			}
 		}
 		if v := optStrArg(args, "workspace_id"); v != "" && workspaceID == "" {
 			workspaceID = v
-			os.Setenv("COREZOID_WORKSPACE_ID", v)
-			if err := updateEnvFile(envPath, "COREZOID_WORKSPACE_ID", v); err != nil {
-				logger.Warn("login: could not save COREZOID_WORKSPACE_ID from arg: %v", err)
+			os.Setenv("WORKSPACE_ID", v)
+			if err := updateEnvFile(envPath, "WORKSPACE_ID", v); err != nil {
+				logger.Warn("login: could not save WORKSPACE_ID from arg: %v", err)
 			}
 		}
 		if v := optStrArg(args, "stage_id"); v != "" && stageID == 0 {
@@ -949,10 +949,10 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 					},
 				)
 				if err != nil {
-					logger.Warn("login: elicitation error for COREZOID_ACCOUNT_URL: %v — using default", err)
+					logger.Warn("login: elicitation error for ACCOUNT_URL: %v — using default", err)
 					accountURL = "https://account.corezoid.com"
 				} else if action != "accept" {
-					logger.Info("login: user cancelled COREZOID_ACCOUNT_URL elicitation (action=%q)", action)
+					logger.Info("login: user cancelled ACCOUNT_URL elicitation (action=%q)", action)
 					return "Please ask the user for their Corezoid Account URL (e.g. https://account.corezoid.com), then call the login tool again with account_url=<value>.", false
 				} else {
 					if v, _ := content["account_url"].(string); v != "" {
@@ -964,9 +964,9 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 			} else {
 				return "Please ask the user for their Corezoid Account URL (e.g. https://account.corezoid.com), then call the login tool again with account_url=<value>.", false
 			}
-			os.Setenv("COREZOID_ACCOUNT_URL", accountURL)
-			if err := updateEnvFile(envPath, "COREZOID_ACCOUNT_URL", accountURL); err != nil {
-				logger.Warn("login: could not save COREZOID_ACCOUNT_URL: %v", err)
+			os.Setenv("ACCOUNT_URL", accountURL)
+			if err := updateEnvFile(envPath, "ACCOUNT_URL", accountURL); err != nil {
+				logger.Warn("login: could not save ACCOUNT_URL: %v", err)
 			}
 		}
 
@@ -1054,9 +1054,9 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 							id = raw
 						}
 						workspaceID = id
-						os.Setenv("COREZOID_WORKSPACE_ID", id)
-						if err := updateEnvFile(envPath, "COREZOID_WORKSPACE_ID", id); err != nil {
-							logger.Warn("login: could not save COREZOID_WORKSPACE_ID: %v", err)
+						os.Setenv("WORKSPACE_ID", id)
+						if err := updateEnvFile(envPath, "WORKSPACE_ID", id); err != nil {
+							logger.Warn("login: could not save WORKSPACE_ID: %v", err)
 						}
 					}
 				}
@@ -1251,7 +1251,7 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 			return fmt.Sprintf("Failed to remove credentials: %v", err), true
 		}
 		apiToken = ""
-		return fmt.Sprintf("Logged out. SIMULATOR_TOKEN removed from %s.", envFilePath()), false
+		return fmt.Sprintf("Logged out. ACCESS_TOKEN removed from %s.", envFilePath()), false
 
 	case "pull-process":
 		processID, err := intArg(args, "process_id")

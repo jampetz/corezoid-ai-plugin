@@ -136,7 +136,7 @@ Tasks can enter Corezoid in multiple ways:
      {
        "ops": [{
          "action": "user",
-         "company_id": "[COREZOID_WORKSPACE_ID]",
+         "company_id": "[WORKSPACE_ID]",
          "conv_id": [process_id],
          "data": {
            "key1": "value1",

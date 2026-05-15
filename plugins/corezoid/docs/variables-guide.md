@@ -9,7 +9,7 @@ Variables store constants (URLs, tokens, endpoints, credentials) that should nev
 - Only lowercase letters `[a-z]`, digits `[0-9]`, and hyphens `-`
 - NAME and DESCRIPTION must be **at least 3 characters**
 - Good examples: `paypal-url`, `api-token-123`, `database-host`, `service-endpoint`
-- Bad examples: `URL`, `SIMULATOR_TOKEN`, `x`, `ab`
+- Bad examples: `URL`, `ACCESS_TOKEN`, `x`, `ab`
 
 ---
 

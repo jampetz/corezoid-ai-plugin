@@ -22,9 +22,9 @@ Call MCP tool **`login`** with no arguments. It will guide setup in one of two m
 
 The `login` tool handles everything automatically in sequence:
 
-1. **API URL prompt** — interactive form asking for `COREZOID_ACCOUNT_URL`
+1. **API URL prompt** — interactive form asking for `ACCOUNT_URL`
 2. **OAuth2** — browser window opens for authentication, token saved to `.env`
-3. **Workspace picker** — fetches available workspaces and shows a dropdown, saves `COREZOID_WORKSPACE_ID` to `.env`
+3. **Workspace picker** — fetches available workspaces and shows a dropdown, saves `WORKSPACE_ID` to `.env`
 4. **Stage picker** — lists projects then stages for selection, saves `COREZOID_STAGE_ID` to `.env`
 
 When `login` returns "Setup complete", proceed to **Step 2**.
@@ -90,7 +90,7 @@ If the user explicitly pastes values, write them to `.env` and skip the correspo
 
 ```
 COREZOID_API_URL=<value>
-COREZOID_WORKSPACE_ID=<value>
+WORKSPACE_ID=<value>
 COREZOID_STAGE_ID=<value>
 ```
 
@@ -102,7 +102,7 @@ Then call `login` — it will skip already-set values and only prompt for what's
 
 | Variable | Set during |
 |---|---|
-| `COREZOID_ACCOUNT_URL` | login step 1 — API URL prompt |
-| `SIMULATOR_TOKEN` | login step 2 — OAuth2 |
-| `COREZOID_WORKSPACE_ID` | login step 3 — workspace selection |
+| `ACCOUNT_URL` | login step 1 — API URL prompt |
+| `ACCESS_TOKEN` | login step 2 — OAuth2 |
+| `WORKSPACE_ID` | login step 3 — workspace selection |
 | `COREZOID_STAGE_ID` | login step 4 — stage selection |

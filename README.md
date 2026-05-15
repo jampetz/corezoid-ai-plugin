@@ -91,16 +91,16 @@ log in to Corezoid
 If you prefer to manage the token yourself, set it in `.env` or export it before starting Claude Code or Codex:
 
 ```bash
-export SIMULATOR_TOKEN=your_token_here
+export ACCESS_TOKEN=your_token_here
 ```
 
 ## Configuration
 
 | Environment variable       | Required | Description                                       |
 |----------------------------|----------|---------------------------------------------------|
-| `SIMULATOR_TOKEN`          | No       | Static token — overrides OAuth2 saved credentials |
+| `ACCESS_TOKEN`          | No       | Static token — overrides OAuth2 saved credentials |
 | `COREZOID_API_URL`         | No       | Override the default Corezoid API base URL        |
-| `COREZOID_WORKSPACE_ID`    | No       | Default workspace ID                              |
+| `WORKSPACE_ID`    | No       | Default workspace ID                              |
 | `COREZOID_STAGE_ID`        | No       | Default stage ID                                  |
 | `COREZOID_APIGW_URL`       | No       | Override the API Gateway URL                      |
 

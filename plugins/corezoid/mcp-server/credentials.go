@@ -9,7 +9,7 @@ import (
 )
 
 // Credentials holds the saved OAuth token for the Corezoid MCP server.
-// AccessToken maps to SIMULATOR_TOKEN (the simulator_token returned by account.corezoid.com).
+// AccessToken maps to ACCESS_TOKEN (the simulator_token returned by account.corezoid.com).
 type Credentials struct {
 	AccessToken string    `json:"access_token"`
 	ExpiresAt   time.Time `json:"expires_at"`
@@ -84,9 +84,9 @@ func removeEnvKey(path, key string) error {
 
 // loadCredentials reads credentials from environment variables.
 // The env vars are populated from .env by findAndLoadDotEnv() at startup.
-// Returns nil, nil if SIMULATOR_TOKEN is not set.
+// Returns nil, nil if ACCESS_TOKEN is not set.
 func loadCredentials() (*Credentials, error) {
-	token := os.Getenv("SIMULATOR_TOKEN")
+	token := os.Getenv("ACCESS_TOKEN")
 	if token == "" {
 		return nil, nil
 	}
@@ -94,7 +94,7 @@ func loadCredentials() (*Credentials, error) {
 		AccessToken: token,
 		TokenType:   "Simulator",
 	}
-	if expiryStr := os.Getenv("COREZOID_TOKEN_EXPIRES_AT"); expiryStr != "" {
+	if expiryStr := os.Getenv("ACCESS_TOKEN_EXPIRES_AT"); expiryStr != "" {
 		if t, err := time.Parse(time.RFC3339, expiryStr); err == nil {
 			creds.ExpiresAt = t
 		}
@@ -102,37 +102,37 @@ func loadCredentials() (*Credentials, error) {
 	return creds, nil
 }
 
-// saveCredentials writes SIMULATOR_TOKEN (and optionally COREZOID_TOKEN_EXPIRES_AT)
+// saveCredentials writes ACCESS_TOKEN (and optionally ACCESS_TOKEN_EXPIRES_AT)
 // to the .env file in the current working directory, and updates the in-process env vars.
 func saveCredentials(creds *Credentials) error {
 	path := envFilePath()
-	if err := updateEnvFile(path, "SIMULATOR_TOKEN", creds.AccessToken); err != nil {
+	if err := updateEnvFile(path, "ACCESS_TOKEN", creds.AccessToken); err != nil {
 		return fmt.Errorf("failed to save token to .env: %w", err)
 	}
-	os.Setenv("SIMULATOR_TOKEN", creds.AccessToken)
+	os.Setenv("ACCESS_TOKEN", creds.AccessToken)
 
 	if !creds.ExpiresAt.IsZero() {
 		expStr := creds.ExpiresAt.Format(time.RFC3339)
-		if err := updateEnvFile(path, "COREZOID_TOKEN_EXPIRES_AT", expStr); err != nil {
+		if err := updateEnvFile(path, "ACCESS_TOKEN_EXPIRES_AT", expStr); err != nil {
 			return fmt.Errorf("failed to save token expiry to .env: %w", err)
 		}
-		os.Setenv("COREZOID_TOKEN_EXPIRES_AT", expStr)
+		os.Setenv("ACCESS_TOKEN_EXPIRES_AT", expStr)
 	}
 	return nil
 }
 
-// deleteCredentials removes SIMULATOR_TOKEN and COREZOID_TOKEN_EXPIRES_AT
+// deleteCredentials removes ACCESS_TOKEN and ACCESS_TOKEN_EXPIRES_AT
 // from the .env file and from the in-process environment.
 func deleteCredentials() error {
 	path := envFilePath()
-	if err := removeEnvKey(path, "SIMULATOR_TOKEN"); err != nil {
+	if err := removeEnvKey(path, "ACCESS_TOKEN"); err != nil {
 		return err
 	}
-	if err := removeEnvKey(path, "COREZOID_TOKEN_EXPIRES_AT"); err != nil {
+	if err := removeEnvKey(path, "ACCESS_TOKEN_EXPIRES_AT"); err != nil {
 		return err
 	}
-	os.Unsetenv("SIMULATOR_TOKEN")
-	os.Unsetenv("COREZOID_TOKEN_EXPIRES_AT")
+	os.Unsetenv("ACCESS_TOKEN")
+	os.Unsetenv("ACCESS_TOKEN_EXPIRES_AT")
 	return nil
 }
 

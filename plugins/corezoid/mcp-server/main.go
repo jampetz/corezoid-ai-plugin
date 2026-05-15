@@ -104,9 +104,9 @@ func findAndLoadDotEnv() {
 func loadConfig() {
 	findAndLoadDotEnv()
 	apiURL = os.Getenv("COREZOID_API_URL")
-	accountURL = os.Getenv("COREZOID_ACCOUNT_URL")
-	workspaceID = os.Getenv("COREZOID_WORKSPACE_ID")
-	apiToken = os.Getenv("SIMULATOR_TOKEN")
+	accountURL = os.Getenv("ACCOUNT_URL")
+	workspaceID = os.Getenv("WORKSPACE_ID")
+	apiToken = os.Getenv("ACCESS_TOKEN")
 	apigwURL = os.Getenv("COREZOID_APIGW_URL")
 	if apigwURL == "" {
 		apigwURL = "https://api-apigw.corezoid.com"
