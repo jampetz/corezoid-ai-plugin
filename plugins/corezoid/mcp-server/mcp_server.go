@@ -900,6 +900,26 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 	case "login":
 		envPath := envFilePath()
 
+		// Re-read .env so that ACCESS_TOKEN (and other vars) added after server
+		// startup are honoured — prevents triggering OAuth when the token is
+		// already present in .env.
+		findAndLoadDotEnv()
+		if apiToken == "" {
+			apiToken = os.Getenv("ACCESS_TOKEN")
+		}
+		if accountURL == "" {
+			accountURL = os.Getenv("ACCOUNT_URL")
+		}
+		if workspaceID == "" {
+			workspaceID = os.Getenv("WORKSPACE_ID")
+		}
+		if stageID == 0 {
+			stageID, _ = strconv.Atoi(os.Getenv("COREZOID_STAGE_ID"))
+		}
+		if apiURL == "" {
+			apiURL = os.Getenv("COREZOID_API_URL")
+		}
+
 		// Record initial stageID to detect if it gets set during this call.
 		stageIDAtStart := stageID
 

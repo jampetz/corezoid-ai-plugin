@@ -2020,16 +2020,20 @@ func handleLogin(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToo
 		}
 	}
 
-	creds, err := auth.PKCEFlow(accountURL, globalOAuthClientID, nil)
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("[Error] OAuth2 login failed: %v", err)), nil
+	// Skip OAuth if a valid (non-expired) token is already saved.
+	existingCreds, _ := auth.Load()
+	if existingCreds != nil && !auth.IsExpired(existingCreds) {
+		globalApiConfig.Authorization = existingCreds.AuthorizationHeader()
+	} else {
+		creds, err := auth.PKCEFlow(accountURL, globalOAuthClientID, nil)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("[Error] OAuth2 login failed: %v", err)), nil
+		}
+		if err := auth.Save(creds); err != nil {
+			log.Printf("Warning: failed to save credentials: %v", err)
+		}
+		globalApiConfig.Authorization = creds.AuthorizationHeader()
 	}
-
-	if err := auth.Save(creds); err != nil {
-		log.Printf("Warning: failed to save credentials: %v", err)
-	}
-
-	globalApiConfig.Authorization = creds.AuthorizationHeader()
 
 	// Fetch workspaces and present a selection if WORKSPACE_ID is not yet set.
 	if os.Getenv("WORKSPACE_ID") == "" {
