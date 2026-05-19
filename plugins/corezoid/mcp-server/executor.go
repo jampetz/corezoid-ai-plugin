@@ -1258,6 +1258,22 @@ func (v *Executor) Share(userID, convID int) map[string]interface{} {
 
 // req sends a request to the Corezoid API with authentication
 func (v *Executor) req(method string, ops []map[string]any) (map[string]interface{}, error) {
+	// Personal-workspace accounts have no companyID. The callers in this file
+	// unconditionally inject `"company_id": workspaceID` into every op, so when
+	// workspaceID is empty the payload carries `"company_id": ""` and Corezoid
+	// rejects every request with `Value is not valid / company_id`. Drop the
+	// empty placeholder (and its mirrors) so the request matches what the API
+	// accepts for personal accounts. No-op for normal company workspaces.
+	if strings.TrimSpace(workspaceID) == "" {
+		for _, op := range ops {
+			for _, k := range []string{"company_id", "from_company_id", "to_company_id"} {
+				if s, ok := op[k].(string); ok && s == "" {
+					delete(op, k)
+				}
+			}
+		}
+	}
+
 	// Create the payload
 	payload := map[string]any{"ops": ops}
 	payloadJSON, _ := json.Marshal(payload)

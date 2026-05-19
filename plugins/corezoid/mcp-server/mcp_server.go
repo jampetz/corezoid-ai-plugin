@@ -286,9 +286,8 @@ func ensureAuth() error {
 	if accountURL == "" {
 		missing = append(missing, "ACCOUNT_URL")
 	}
-	if workspaceID == "" {
-		missing = append(missing, "WORKSPACE_ID")
-	}
+	// WORKSPACE_ID is optional: personal-workspace accounts have no companyID.
+	// `Executor.req` strips the empty placeholder from outbound ops in that case.
 	if stageID == 0 {
 		missing = append(missing, "COREZOID_STAGE_ID")
 	}
