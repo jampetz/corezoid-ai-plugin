@@ -1139,12 +1139,12 @@ func fetchAndSaveSystemForms(ctx context.Context, accID string) error {
 		"Layers":         true,
 		"FlowchartBlock": true,
 		"Actor":          true,
-		"SmartTags":      true,
-		"Events":         true,
-		"Reactions":      true,
-		"Dashboards":     true,
-		"Tags":           true,
-		"Snippets":       true,
+		//"SmartTags":      true,
+		//"Events":         true,
+		//"Reactions":      true,
+		//"Dashboards": true,
+		//"Tags":     true,
+		//"Snippets": true,
 		//"Default":        true,
 	}
 
