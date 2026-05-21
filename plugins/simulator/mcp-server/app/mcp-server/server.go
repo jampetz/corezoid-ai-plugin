@@ -251,6 +251,10 @@ func registerOperationTools(mcpServer *server.MCPServer, operations []Operation)
 			if param.Name == "accId" {
 				continue // auto-injected from WORKSPACE_ID env var
 			}
+			// formId for createActor is handled below with formName alternative
+			if toolName == "createActor" && param.Name == "formId" {
+				continue
+			}
 			var propOpts []mcp.PropertyOption
 			if param.Description != "" {
 				propOpts = append(propOpts, mcp.Description(param.Description))
@@ -273,6 +277,19 @@ func registerOperationTools(mcpServer *server.MCPServer, operations []Operation)
 			))
 		}
 
+		// createActor: accept either formId or formName (one is required).
+		// formId is skipped from the swagger loop above and re-added here as optional.
+		if toolName == "createActor" {
+			opts = append(opts,
+				mcp.WithNumber("formId",
+					mcp.Description("Numeric ID of the form. Either formId or formName must be provided."),
+				),
+				mcp.WithString("formName",
+					mcp.Description("Form name (title) as an alternative to formId. Either formId or formName must be provided."),
+				),
+			)
+		}
+
 		mcpServer.AddTool(
 			mcp.NewTool(toolName, opts...),
 			func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -289,6 +306,24 @@ func registerOperationTools(mcpServer *server.MCPServer, operations []Operation)
 					delete(args, "items")
 				}
 				normalizeBodyArg(args)
+				// Resolve formName → formId for createActor before building queryParams.
+				if toolName == "createActor" {
+					if formName, ok := args["formName"].(string); ok && formName != "" {
+						// Ensure the name cache is populated (loads sys-forms.yaml if not yet done).
+						if _, loadErr := loadSysForms(); loadErr != nil {
+							log.Printf("Warning: failed to load sys-forms for name resolution: %v", loadErr)
+						}
+						fid := resolveFormNameToID(formName)
+						if fid == 0 {
+							return mcp.NewToolResultError(fmt.Sprintf("[Error] form name %q not found in system forms cache", formName)), nil
+						}
+						args["formId"] = float64(fid)
+						delete(args, "formName")
+					}
+					if _, hasID := args["formId"]; !hasID {
+						return mcp.NewToolResultError("[Error] createActor requires either formId or formName"), nil
+					}
+				}
 				queryParams := map[string]interface{}{}
 				headerParams := map[string]interface{}{}
 				for _, p := range op.Parameters {
@@ -353,6 +388,7 @@ func registerOperationTools(mcpServer *server.MCPServer, operations []Operation)
 							}
 						}
 					}
+					result = filterCreateActorResult(result)
 				}
 				if toolName == "massLink" && massLinkLayerID != "" && len(massLinkPairs) > 0 && err == nil && result != nil && !result.IsError {
 					log.Printf("massLink: placing %d edges on layer %s", len(massLinkPairs), massLinkLayerID)
@@ -689,6 +725,45 @@ func LoadSwaggerServer(mcpServer *server.MCPServer, swaggerSpec models.SwaggerSp
 		handleSetWorkspace,
 	)
 
+	mcpServer.AddTool(
+		mcp.NewTool("pullGraphFile",
+			mcp.WithDescription("Fetch all actors and edges from a layer and write them to <layerId>.yaml in the current working directory."),
+			mcp.WithString("layerId",
+				mcp.Description("Layer actor UUID to pull."),
+				mcp.Required(),
+			),
+		),
+		handlePullGraphFile,
+	)
+
+	mcpServer.AddTool(
+		mcp.NewTool("pushGraphFile",
+			mcp.WithDescription("Read <layerId>.yaml from the current working directory and sync it with the server layer: creates missing actors/edges, updates changed ones, removes extras. Updates the file in place with server-assigned UUIDs."),
+			mcp.WithString("layerId",
+				mcp.Description("Layer actor UUID — file <layerId>.yaml must exist in the current working directory."),
+				mcp.Required(),
+			),
+		),
+		handlePushGraphFile,
+	)
+
+	mcpServer.AddTool(
+		mcp.NewTool("createActors",
+			mcp.WithDescription("Create up to 50 actors at once. Returns the list of created actor IDs."),
+			mcp.WithString("formId",
+				mcp.Description("Form ID to create actors for (integer). Provide either formId or formName."),
+			),
+			mcp.WithString("formName",
+				mcp.Description("Form name to create actors for (resolved via system forms cache). Provide either formId or formName."),
+			),
+			mcp.WithArray("actors",
+				mcp.Description("Array of actor objects to create (max 50). Each object may contain: title, ref, description, color, picture, data, appId, cardActorId, viewData."),
+				mcp.Required(),
+			),
+		),
+		handleCreateActors,
+	)
+
 	// Add MCP resources capability
 	initializeResources(mcpServer)
 
@@ -853,33 +928,26 @@ func buildOperations(swaggerSpec models.SwaggerSpec, apiCfg models.ApiConfig) []
 
 // checkIfRequestBodyIsArray checks if the request body schema requires an array
 func checkIfRequestBodyIsArray(op Operation) bool {
-	log.Printf("DEBUG: checkIfRequestBodyIsArray called for operation %s", op.ID)
 
 	if op.RequestBody == nil {
-		log.Printf("DEBUG: RequestBody is nil")
 		return false
 	}
 
 	// First try to cast to *models.RequestBody
 	if requestBody, ok := op.RequestBody.(*models.RequestBody); ok {
-		log.Printf("DEBUG: RequestBody is *models.RequestBody")
 
 		// Check application/json content type
 		if mediaType, exists := requestBody.Content["application/json"]; exists {
-			log.Printf("DEBUG: found application/json content type")
 
 			if mediaType.Schema != nil {
-				log.Printf("DEBUG: schema found in media type")
 
 				// Check if schema type is array
 				if mediaType.Schema.Type == "array" {
-					log.Printf("DEBUG: schema type is array - returning true")
 					return true
 				}
 
 				// Check if schema has a reference to an array definition
 				if mediaType.Schema.Ref != "" {
-					log.Printf("DEBUG: schema has $ref: %s", mediaType.Schema.Ref)
 					schemaName := ExtractSchemaName(mediaType.Schema.Ref, "")
 					if definition, found := getDefinition(globalSwaggerSpec, schemaName); found {
 						log.Printf("DEBUG: found definition %s with type: %s", schemaName, definition.Type)
@@ -1188,6 +1256,7 @@ func fetchAndSaveSystemForms(ctx context.Context, accID string) error {
 		return fmt.Errorf("failed to write sys-forms.yaml: %w", err)
 	}
 	log.Printf("Saved %d root forms to sys-forms.yaml", len(roots))
+	buildFormNameIDCache(roots)
 	return nil
 }
 
@@ -1211,6 +1280,14 @@ var (
 var (
 	actorFormIDCache   = map[string]int{}
 	actorFormIDCacheMu sync.RWMutex
+)
+
+// formNameToIDCache maps form title → formId, built from system forms at startup.
+// formIDToNameCache is the reverse: formId → form title.
+var (
+	formNameToIDCache   = map[string]int{}
+	formIDToNameCache   = map[int]string{}
+	formNameToIDCacheMu sync.RWMutex
 )
 
 // hierarchyEdgeTypeID caches the ID of the "hierarchy" edge type fetched from getEdgeTypes.
@@ -1238,8 +1315,48 @@ func loadSysForms() ([]SysFormItem, error) {
 			return
 		}
 		sysFormsCache = items
+		buildFormNameIDCache(items)
 	})
 	return sysFormsCache, sysFormsCacheErr
+}
+
+// buildFormNameIDCache rebuilds formNameToIDCache by traversing the SysFormItem tree.
+// Called after system forms are fetched or loaded from disk.
+func buildFormNameIDCache(forms []SysFormItem) {
+	formNameToIDCacheMu.Lock()
+	defer formNameToIDCacheMu.Unlock()
+	for k := range formNameToIDCache {
+		delete(formNameToIDCache, k)
+	}
+	for k := range formIDToNameCache {
+		delete(formIDToNameCache, k)
+	}
+	var walk func([]SysFormItem)
+	walk = func(items []SysFormItem) {
+		for _, item := range items {
+			if item.Title != "" && item.ID != 0 {
+				formNameToIDCache[item.Title] = item.ID
+				formIDToNameCache[item.ID] = item.Title
+			}
+			walk(item.Childs)
+		}
+	}
+	walk(forms)
+	log.Printf("buildFormNameIDCache: indexed %d form names", len(formNameToIDCache))
+}
+
+// resolveFormNameToID returns the formId for a given form name, or 0 if not found.
+func resolveFormNameToID(name string) int {
+	formNameToIDCacheMu.RLock()
+	defer formNameToIDCacheMu.RUnlock()
+	return formNameToIDCache[name]
+}
+
+// resolveFormIDToName returns the form title for a given formId, or "" if not found.
+func resolveFormIDToName(id int) string {
+	formNameToIDCacheMu.RLock()
+	defer formNameToIDCacheMu.RUnlock()
+	return formIDToNameCache[id]
 }
 
 // findFormInTree searches `forms` for an item with the given id, looking at the
@@ -1473,6 +1590,33 @@ func cacheActorFormIDFromResult(responseText string) {
 	actorFormIDCache[resp.Data.ID] = formID
 	actorFormIDCacheMu.Unlock()
 	log.Printf("actorFormIDCache: actor %s → formId=%d", resp.Data.ID, formID)
+}
+
+// filterCreateActorResult replaces the full actor payload with {"id":"..."}.
+func filterCreateActorResult(result *mcp.CallToolResult) *mcp.CallToolResult {
+	if result == nil || result.IsError {
+		return result
+	}
+	newContent := make([]mcp.Content, 0, len(result.Content))
+	for _, c := range result.Content {
+		tc, ok := c.(mcp.TextContent)
+		if !ok {
+			newContent = append(newContent, c)
+			continue
+		}
+		var resp struct {
+			Data struct {
+				ID string `json:"id"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal([]byte(tc.Text), &resp); err != nil || resp.Data.ID == "" {
+			newContent = append(newContent, c)
+			continue
+		}
+		slim, _ := json.Marshal(map[string]interface{}{"id": resp.Data.ID})
+		newContent = append(newContent, mcp.TextContent{Type: "text", Text: string(slim)})
+	}
+	return &mcp.CallToolResult{Content: newContent, IsError: result.IsError}
 }
 
 // resolveActorFormID returns the formId for an actor UUID: checks actorFormIDCache
@@ -2167,6 +2311,109 @@ func handleSetWorkspace(ctx context.Context, request mcp.CallToolRequest) (*mcp.
 	return mcp.NewToolResultText(fmt.Sprintf("Workspace saved: WORKSPACE_ID=%s", accID)), nil
 }
 
+// handleCreateActors creates up to 50 actors sequentially and returns their IDs.
+func handleCreateActors(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if authResult := ensureAuth(ctx); authResult != nil {
+		return authResult, nil
+	}
+
+	args := req.GetArguments()
+
+	// Resolve formId (accepts int or float64 from JSON)
+	formID := toInt(args["formId"])
+	if formID == 0 {
+		if formName, ok := args["formName"].(string); ok && formName != "" {
+			if _, loadErr := loadSysForms(); loadErr != nil {
+				log.Printf("Warning: failed to load sys-forms: %v", loadErr)
+			}
+			formID = resolveFormNameToID(formName)
+			if formID == 0 {
+				return mcp.NewToolResultError(fmt.Sprintf("[Error] form name %q not found in system forms cache", formName)), nil
+			}
+		}
+	}
+	if formID == 0 {
+		return mcp.NewToolResultError("[Error] createActors requires either formId or formName"), nil
+	}
+
+	actorsRaw, ok := args["actors"]
+	if !ok {
+		return mcp.NewToolResultError("[Error] createActors requires 'actors' parameter"), nil
+	}
+	actorsSlice, ok := actorsRaw.([]interface{})
+	if !ok {
+		return mcp.NewToolResultError("[Error] 'actors' must be a JSON array"), nil
+	}
+	if len(actorsSlice) == 0 {
+		return mcp.NewToolResultError("[Error] 'actors' array must not be empty"), nil
+	}
+	if len(actorsSlice) > 50 {
+		return mcp.NewToolResultError(fmt.Sprintf("[Error] cannot create more than 50 actors at once (got %d)", len(actorsSlice))), nil
+	}
+
+	// Find createActor operation to reuse its URL and HTTP method.
+	var createOp *Operation
+	for i, op := range globalOperations {
+		if operationToolName(op) == "createActor" {
+			createOp = &globalOperations[i]
+			break
+		}
+	}
+	if createOp == nil {
+		return mcp.NewToolResultError("[Error] createActor operation not found in loaded spec"), nil
+	}
+
+	ids := make([]string, 0, len(actorsSlice))
+	for i, item := range actorsSlice {
+		actorMap, ok := item.(map[string]interface{})
+		if !ok {
+			return mcp.NewToolResultError(fmt.Sprintf("[Error] actor at index %d is not an object", i)), nil
+		}
+
+		bodyBytes, _ := json.Marshal(actorMap)
+		actorArgs := map[string]interface{}{"body": string(bodyBytes)}
+		qp := map[string]interface{}{"formId": float64(formID)}
+
+		childFormID, injErr := injectCreateActorData(ctx, actorArgs, qp)
+		if injErr != nil {
+			log.Printf("Warning: createActors data injection failed for actor %d: %v", i, injErr)
+		}
+
+		innerReq := mcp.CallToolRequest{}
+		innerReq.Params.Arguments = map[string]interface{}{"body": actorArgs["body"]}
+
+		result, err := executeOperation(ctx, *createOp, qp, nil, nil, innerReq)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("[Error] actor %d: %v", i, err)), nil
+		}
+		if result.IsError {
+			return result, nil
+		}
+
+		for _, c := range result.Content {
+			tc, ok := c.(mcp.TextContent)
+			if !ok {
+				continue
+			}
+			cacheActorFormIDFromResult(tc.Text)
+			if childFormID != 0 {
+				overrideActorFormID(tc.Text, childFormID)
+			}
+			var resp struct {
+				Data struct {
+					ID string `json:"id"`
+				} `json:"data"`
+			}
+			if jsonErr := json.Unmarshal([]byte(tc.Text), &resp); jsonErr == nil && resp.Data.ID != "" {
+				ids = append(ids, resp.Data.ID)
+			}
+		}
+	}
+
+	out, _ := json.Marshal(map[string]interface{}{"ids": ids})
+	return mcp.NewToolResultText(string(out)), nil
+}
+
 // ensureAuth checks that globalApiConfig.Authorization is set.
 // If not, it tries to load/refresh from saved credentials.
 // If still empty, uses MCP Elicitation to ask the user whether to start OAuth2.
@@ -2309,7 +2556,6 @@ func executeOperation(ctx context.Context, op Operation, queryParams, headerPara
 					log.Printf("DEBUG: Body is already an array, using as-is")
 					reqBodyBytes, _ = json.Marshal(originalBody)
 				} else {
-					log.Printf("DEBUG: Body is not an array, wrapping in array")
 					// Convert body to array
 					arrayBody := []interface{}{originalBody}
 					reqBodyBytes, _ = json.Marshal(arrayBody)
@@ -2318,7 +2564,7 @@ func executeOperation(ctx context.Context, op Operation, queryParams, headerPara
 				log.Printf("DEBUG: Failed to unmarshal original body, error: %v", err)
 				return mcp.NewToolResultError(fmt.Sprintf("[Error] invalid JSON in body parameter: %v", err)), nil
 			}
-			log.Printf("DEBUG: Final body: %s", string(reqBodyBytes))
+
 		} else {
 			// Schema doesn't expect an array, use the original body as-is
 			reqBodyBytes = []byte(bodyStr)
@@ -2402,6 +2648,7 @@ func executeOperation(ctx context.Context, op Operation, queryParams, headerPara
 		return mcp.NewToolResultError(fmt.Sprintf("[Error] failed to read HTTP response: %v", err)), nil
 	}
 
+	log.Printf("Response : %d %.500s\n", resp.StatusCode, body)
 	return mcp.NewToolResultText(string(body)), nil
 }
 
@@ -2555,6 +2802,12 @@ func RunCLI(swaggerSpec models.SwaggerSpec, apiCfg models.ApiConfig, toolName st
 		result, err = handleLogin(ctx, req)
 	case "set-workspace":
 		result, err = handleSetWorkspace(ctx, req)
+	case "createActors":
+		result, err = handleCreateActors(ctx, req)
+	case "pushGraphFile":
+		result, err = handlePushGraphFile(ctx, req)
+	case "pullGraphFile":
+		result, err = handlePullGraphFile(ctx, req)
 	default:
 		var found *Operation
 		for i, op := range globalOperations {
@@ -2567,6 +2820,24 @@ func RunCLI(swaggerSpec models.SwaggerSpec, apiCfg models.ApiConfig, toolName st
 			return fmt.Sprintf("[Error] unknown tool: %s", toolName), true
 		}
 
+		// Resolve formName → formId for createActor before building queryParams.
+		if toolName == "createActor" {
+			if formName, ok := args["formName"].(string); ok && formName != "" {
+				// Ensure the name cache is populated (loads sys-forms.yaml if not yet done).
+				if _, loadErr := loadSysForms(); loadErr != nil {
+					log.Printf("Warning: failed to load sys-forms for name resolution: %v", loadErr)
+				}
+				fid := resolveFormNameToID(formName)
+				if fid == 0 {
+					return fmt.Sprintf("[Error] form name %q not found in system forms cache", formName), true
+				}
+				args["formId"] = strconv.Itoa(fid)
+				delete(args, "formName")
+			}
+			if _, hasID := args["formId"]; !hasID {
+				return "[Error] createActor requires either formId or formName", true
+			}
+		}
 		queryParams := map[string]interface{}{}
 		headerParams := map[string]interface{}{}
 		for _, p := range found.Parameters {
@@ -2635,6 +2906,7 @@ func RunCLI(swaggerSpec models.SwaggerSpec, apiCfg models.ApiConfig, toolName st
 					}
 				}
 			}
+			result = filterCreateActorResult(result)
 		}
 		if toolName == "massLink" && massLinkLayerID2 != "" && len(massLinkPairs2) > 0 && err == nil && result != nil && !result.IsError {
 			log.Printf("massLink: placing %d edges on layer %s", len(massLinkPairs2), massLinkLayerID2)

@@ -3571,34 +3571,6 @@
                     "description": "Script actor ID",
                     "nullable": true
                   },
-                  "appSettings": {
-                    "type": "object",
-                    "description": "Script settings, e.g. autorun",
-                    "nullable": true,
-                    "properties": {
-                      "autorun": {
-                        "type": "boolean",
-                        "required": [],
-                        "description": "Flag to run a script automatically",
-                        "example": true
-                      },
-                      "expired": {
-                        "type": "number",
-                        "required": [],
-                        "description": "Unix timestamp to expire the script",
-                        "example": 2147483647
-                      },
-                      "users": {
-                        "type": "array",
-                        "required": [],
-                        "description": "List of users who can run the script",
-                        "items": {
-                          "type": "number",
-                          "example": 999999
-                        }
-                      }
-                    }
-                  },
                   "cardActorId": {
                     "type": "string",
                     "description": "Actor ID to display its data card"

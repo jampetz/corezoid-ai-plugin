@@ -1,17 +1,31 @@
 ---
 name: simulator-graph
 description: >
-  Simulator.Company graph structure specialist. Use when the user wants to build
-  business process graphs, flowcharts, algorithms, create actors (nodes), manage
-  links (edges) between actors, work with layers (visual views), search actors
-  on layers, move actors between layers, or explore graph connections.
+  Simulator.Company graph structure specialist. Use when the user wants to
+  build, edit, analyze, inspect, or ask questions about business process
+  graphs, flowcharts, algorithms, actors (nodes), links (edges), or layers
+  (visual views) in Simulator.Company.
+
+  Trigger on any of these intents:
+  — Creating: "create graph", "build flowchart", "new diagram", "add actor",
+    "add block to graph", "create algorithm", "draw flowchart", "digital twin",
+    "create process on graph", "build process diagram", "FlowchartBlock",
+    "startStop", "predefinedProcess".
+  — Editing: "edit graph", "update actor", "rename node", "change color",
+    "move actor", "add step to flowchart", "modify diagram", "restructure
+    process", "add edge", "remove link", "reorder steps", "update layer".
+  — Syncing: "push graph", "pull graph", "sync graph", "push changes",
+    "apply edits to layer".
+  — Querying / analysis: "what actors are on this layer", "show me the graph",
+    "who is connected to", "find actor", "list nodes", "describe the process",
+    "analyze the flowchart", "how many steps", "what links exist",
+    "search layer", "inspect actor", "get actor", "explore graph".
+  — Layer / connection operations: "add to layer", "connect actors",
+    "link nodes", "organize on layer", "move actors between layers",
+    "explore graph connections".
+
   Covers the full actor lifecycle (create, update, delete, search), all graph
-  traversal operations, and FlowchartBlock diagram creation.
-  Activate also when the user says "add to layer", "connect actors", "build a
-  process flow", "link nodes", "organize on layer", "create algorithm",
-  "draw flowchart", "add block to graph", "flowchart", "FlowchartBlock",
-  "startStop", "predefinedProcess", "create process on graph", "digital twin",
-  "build process diagram".
+  traversal operations, layer management, and FlowchartBlock diagram creation.
 ---
 
 # Simulator.Company Graph Builder
@@ -19,335 +33,163 @@ description: >
 You are a specialist in building graph-based business process structures in
 Simulator.Company using the `simulator` MCP server.
 
-
----
-
-## Step 0a — Read sys-forms.yaml (MANDATORY FIRST ACTION)
-
-Before doing **anything** else, read the system forms catalog from the current working directory (not plugin directory):
-
-```
-Read: sys-forms.yaml
-```
-
-This file is a list of system forms. From it, extract and remember:
-
-| Variable | How to find it | Used for |
-|---|---|---|
-| `graphFormId` | root entry where `title == "Graphs"` → `id` | Creating Graph actors |
-| `layerFormId` | root entry where `title == "Layers"` → `id` | Creating Layer actors |
-| Block template ids | entry where `title == "FlowchartBlock"` → `childs[]` → match by `title` → `id` | Creating flowchart nodes |
-
-**Block template lookup** (find `id` in `FlowchartBlock.childs` by matching `title`):
-
-| User asks for | Title to match in `FlowchartBlock.childs` | Default color |
-|---|---|---|
-| "Start" or "Stop" node | `"Start / Stop"` | `#4caf50` (green) |
-| "Process" node | `"Process"` | `#2196f3` (blue) |
-| "Decision" node | `"Decision"` | `#ff9800` (orange) |
-| "Predefined Process" | `"Predefined Process"` | `#00bcd4` (cyan) |
-| "Document" | `"Document"` | `#ff5722` (deep orange) |
-| "API Call" | `"API Call"` | `#9c27b0` (purple) |
-| Corezoid Start node | `"Corezoid Start"` | `#4caf50` (green) |
-| AWS Lambda icon | `"Lambda"` | `#ff9800` (orange) |
-
-> **Rule:** Use the **child** form's `id` as `formId`, never the parent `FlowchartBlock` id.
->
-> **Color rule:** Always pass the `color` field (hex string) when creating a flowchart block.
-> Use the default from the table above, or apply the user's requested color.
-
----
-
-### Step 0b — Layer ID (`layerId`)
-
-1. Check whether a `layerId` (graph/layer actor ID) is already known — from the user's current message, conversation history, or session context.
-2. **If `layerId` IS known** → **do not create a new layer**. Remember this value and call `getLayer(layerId=<known>)` during discovery to read the current state (existing nodes, edges, `laId`s). Skip any "create layer" step.
-3. **If `layerId` is NOT known** → determine intent:
-    - User explicitly asked to **create a new graph/layer** → create two actors and link them:
-        1. `createActor(formId=<graphFormId>, body='{"title":"<name>"}')` → save as `graphId`
-        2. `createActor(formId=<layerFormId>, body='{"title":"<name>"}')` → save as `layerId`
-        3. `createLink(body='{"source":"<graphId>","target":"<layerId>"}')` — bind the graph to its layer
-    - Intent is unclear → ask:
-      > "Which graph (layer) should we use? Provide a Layer ID or should I create a new one?"
-4. Once `layerId` is resolved (either from context or just created), use it in all subsequent `manageLayer`, `getLayer`, `searchLayerActors`, and edge calls.
-
----
-
-## Step 1 — Create Actor From a System Form (NO `data` field!)
-
-> **CRITICAL:** When `formId` points to a form found in `sys-forms.yaml`, the
-> MCP server **auto-injects** the `data` field (shape, view, blockId, etc.)
-> from the form definition. **Do not pass `data` yourself.** Passing it will
-> overwrite the server-side injection and likely produce an unrenderable block.
-
-```
-// formId = id looked up from FlowchartBlock.childs where title == "Start / Stop"
-createActor(
-  formId=<startStopFormId>,
-  body='{
-    "title": "Start",
-    "color": "#4caf50"
-  }')
-# → returns { "id": "<actorId>", "title": "Start", ... }
-```
-
-Only pass `data` when creating actors from **custom (non-system) forms**, where
-the user defines their own field set.
-
 ---
 
 ## Core Concepts & Glossary
 
-| Term | Description                                                                                                                               |
-|---|-------------------------------------------------------------------------------------------------------------------------------------------|
-| **Actor** | Graph node. Created from a Form template. Has id, title, status, data fields.                                                             |
-| **Form** | Actor template/type. Defines fields and behavior. Lives in `sys-forms.yaml` (system forms) or workspace-specific custom forms.            |
-| **FlowchartBlock** | Parent system form (found by `title == "FlowchartBlock"`) that groups all flowchart/algorithm block templates as its `childs`.            |
-| **Graph / Layer** | A layer is an actor with the Layer system form. Visual canvas where actors are placed at (x, y) coordinates.                              |
-| **laId** | Layer Actor ID. Assigned by `manageLayer` when you place an actor on a layer. Required as `laIdSource` / `laIdTarget` when drawing edges. |
+| Term | Description |
+|---|---|
+| **Actor** | Graph node. Created from a Form template. Has id, title, color, data fields. |
+| **Form** | Actor template/type. Defines shape and behavior. All system form names are in the catalog below. |
+| **Graph actor** | An actor with `formName="Graphs"` — the logical container for a diagram. |
+| **Layer actor** | An actor with `formName="Layers"` — the visual canvas where nodes are placed at (x, y). |
+| **Graph file** | A YAML file named `<layerId>.yaml` in the current working directory describing the full layer state. |
+| **laId** | Layer Actor ID. Assigned by `manageLayer` when an actor is placed on a layer. |
 
 ---
 
-## Actor Operations
+## Primary Workflow — File-Based Graph Building
 
-### Create Actor
-```
-createActor(
-  formId=<formIdFromSysForms>,    // child form id looked up from sys-forms.yaml
-  body='{
-    "title": "Process Step 1",
-    "description": "First step in onboarding",
-    "color": "#2196f3"
-  }')
-# Returns: { "id": "<actorId>", "title": "...", ... }
-```
-Notes:
-- For forms found in `sys-forms.yaml` → **do not pass `data`** (server fills it).
-- For custom forms → pass `data` matching the form's field definitions.
-- Always include `color` (hex string). See the title → color table in Step 0a.
+> **This is the preferred approach for all graph creation and editing.**
+> Use the low-level MCP tools (createActor, manageLayer, etc.) only for
+> one-off queries or when specifically requested.
 
-### Get Actor
-```
-getActor(actorId="<actorId>")
-getActorByObjId(accId="<ws>", objType=1, objId=12345)
-```
+### Step 1 — Create Graph + Layer actors
 
-### Update Actor
-```
-updateActor(formId=<formId>, actorId="<actorId>", body='{"title": "Updated"}')
-```
-
-### Delete Actor
-```
-deleteActor(actorId="<actorId>")
-deleteBulk(body='{"actorIds": ["<a1>", "<a2>"]}')
-```
-
-## Link Operations
-
-
-
-### Create Link
-
-> **After creating a link, always place it on the layer too** — otherwise the
-> arrow won't appear on the graph.
+Every diagram needs two actors linked together. Do this once per new diagram.
 
 ```
-// Step 1: create the logical link
-createLink(
-  body='{
-    "source": "<actorA>",
-    "target": "<actorB>"
-  }')
-# Returns: { "data": { "id": "<edgeId>" } } — save this edgeId
+// 1. Create the graph container
+createActor(formName="Graphs", body='{"title":"<diagram name>"}')
+→ save returned id as graphId
 
-// Step 2: draw the edge on the layer (MANDATORY for visual graphs)
-manageLayer(
-  layerId="<layerActorId>",
-  body='[{"action":"create","data":{"id":"<edgeId>","type":"edge","laIdSource":<laId A>,"laIdTarget":<laId B>}}]')
+// 2. Create the visual canvas (layer)
+createActor(formName="Layers", body='{"title":"<diagram name>"}')
+→ save returned id as layerId
+
+// 3. Link graph → layer
+createLink(body='{"source":"<graphId>","target":"<layerId>"}')
 ```
 
-### Create Multiple Links (efficient batch)
+If `layerId` is already known (from user message or context) — skip this step entirely.
 
-Pass `layerId` and the server will automatically place all new edges on the layer —
-no separate `manageLayer` call required.
+---
+
+### Step 2 — Prepare the Graph File
+
+**Option A — New empty layer:** write `<layerId>.yaml` from scratch:
+
+```yaml
+layerId: "<layerId>"
+actors:
+  - id: start
+    title: "Start"
+    formName: "Start / Stop"
+    color: "#17B26A"
+    position:
+      x: 0
+      y: 0
+  - id: process1
+    title: "Process Step"
+    formName: "Process"
+    color: "#539fdf"
+    description: "Does something important"
+    position:
+      x: 0
+      y: 130
+  - id: end
+    title: "End"
+    formName: "Start / Stop"
+    color: "#F04438"
+    position:
+      x: 0
+      y: 260
+edges:
+  - source: start
+    target: process1
+  - source: process1
+    target: end
+```
+
+**Option B — Existing layer:** pull current state into a file, then edit it:
 
 ```
-massLink(
-  layerId="<layerActorId>",
-  body='[
-    {"source": "<a>", "target": "<b>"},
-    {"source": "<b>", "target": "<c>"}
-  ]')
-# → creates logical links AND draws them on the layer in one call
-```
-
-### Check / Update / Delete Links
-```
-existLink(body='{"source": "<a>", "target": "<b>"}')
-updateLink(edgeId="<edgeId>", body='{"data": {"weight": 5}}')
-deleteLink(edgeId="<edgeId>")
-bulkDeleteLinks(body='{"edgeIds": ["<e1>", "<e2>"]}')
+pullGraphFile(layerId="<layerId>")
+→ creates <layerId>.yaml with all current actors and edges
+→ open and edit the file as needed
 ```
 
 ---
 
-## Graph Traversal
+### Step 3 — Push the File to Server
 
 ```
-getActorLinks(actorId="<actorId>")          // all edges (in + out) with link details
-getLinkedActors(actorId="<actorId>")        // connected actors + link info
-getLinked(actorId="<actorId>", type="children")   // "children" | "parents" | "all"
-actorGlobalLayers(actorId="<actorId>")      // all layers containing this actor
+pushGraphFile(layerId="<layerId>")
+```
+
+The server will:
+- **Create** actors whose `id` is a local name (e.g. `start`, `process1`) → replaces local ids with server UUIDs in the file
+- **Update** actors whose `id` is already a UUID — if title/color/description changed
+- **Delete from layer** actors present on server but missing from file
+- **Create** missing edges (links + layer placement)
+- **Delete from layer** edges present on server but missing from file
+- **Update positions** for actors whose `position` changed
+
+After push the file is updated in place with all server UUIDs.
+
+---
+
+### Editing an Existing Graph
+
+```
+// 1. Pull current state
+pullGraphFile(layerId="<layerId>")
+
+// 2. Edit <layerId>.yaml — add/remove/modify actors and edges
+
+// 3. Push changes
+pushGraphFile(layerId="<layerId>")
 ```
 
 ---
 
-## Layer Operations
+## Graph File Format Reference
 
-### Get Layer
-```
-getLayer(layerId="<layerActorId>")
-# Layers ARE actors (with the Layer system form). Returns nodes/edges and their laIds.
-```
+```yaml
+layerId: "<uuid>"           # layer actor UUID
 
-### Add Nodes to Layer (with positions)
-```
-manageLayer(
-  layerId="<layerActorId>",
-  body='[
-    {"action":"create","data":{"id":"<actor1>","type":"node","position":{"x":100,"y":100}}},
-    {"action":"create","data":{"id":"<actor2>","type":"node","position":{"x":300,"y":100}}}
-  ]')
-# Response carries laId for each placed element (nodesMap[i].laId) — needed for edges.
-```
+actors:
+  - id: local_name          # local id for new actors; UUID for existing ones
+    title: "My Block"
+    formName: "Process"     # use formName from the catalog (preferred over formId)
+    color: "#539fdf"        # hex color string — always set for flowchart blocks
+    description: "..."      # optional
+    picture: ""             # optional
+    position:
+      x: 0                  # horizontal position on layer
+      y: 130                # vertical position on layer
 
-### Add Edge to Layer
-```
-manageLayer(
-  layerId="<layerActorId>",
-  body='[
-    {"action":"create","data":{"id":"<edgeId>","type":"edge","laIdSource":<laId A>,"laIdTarget":<laId B>}}
-  ]')
+edges:
+  - source: local_name_or_uuid   # references actor id field
+    target: local_name_or_uuid
+    source_title: "My Block"     # informational only, not sent to server
+    target_title: "Other Block"
 ```
 
-### Delete Node / Edge From Layer (view only — does not delete the actor)
-```
-manageLayer(
-  layerId="<layerActorId>",
-  body='[
-    {"action":"delete","data":{"id":"<actor1>","type":"node"}},
-    {"action":"delete","data":{"id":"<edgeId>","type":"edge"}}
-  ]')
-```
-
-### Update Positions on Layer
-```
-layerActorsPosition(
-  layerId="<layerActorId>",
-  body='{"actors":[{"actorId":"<actor1>","x":150,"y":150}]}')
-```
-
-### Search / Filter Actors on Layer
-```
-searchLayerActors(layerId="<layerActorId>", query="onboarding")
-getLayerActorsByFormId(layerId="<layerActorId>", formId=<formId>)
-```
-
-### Misc Layer Operations
-```
-exist(layerId="<layerActorId>", body='{"actorIds":["<a1>","<a2>"]}')
-moveElements(sourceLayerId="<la>", targetLayerId="<lb>", body='{"actorIds":["<a1>"]}')
-cleanLayer(layerId="<layerActorId>")   // remove all actors from the view (actors remain)
-```
+**Rules:**
+- `id` values are local references used only within the file for edge wiring.
+  After `pushGraphFile` all local ids are replaced with server UUIDs.
+- Do **not** include `data` for system forms — the server auto-injects shape/view.
+- `formName` takes priority over `formId` when both are present.
+- `edges` reference actor `id` fields (local names work, they are resolved at push time).
 
 ---
 
-## FlowchartBlock: Step-by-Step Workflow
+## Layout Algorithm — Coordinate Calculation
 
-> **CRITICAL RULES**
-> 1. Every link needs **TWO** calls: `createLink` (logical) + `manageLayer` with `type:"edge"` (visual). Missing the second call = invisible arrows.
-> 2. **Do not** pass `data` when `formId` is a system form from `sys-forms.yaml`. The server auto-injects shape, size, and view from the form definition.
+**Never hardcode coordinates.** Calculate using dagre/Sugiyama layout.
 
-### Step 1 — Discovery
-
-```
-1. Read sys-forms.yaml (from current working directory)
-   → find FlowchartBlock entry → index childs by title
-   → remember graphFormId (title="Graphs") and layerFormId (title="Layers")
-   → look up specific block template ids by title (e.g. "Start / Stop", "Process", "Decision")
-
-2. Resolve the layer (graph canvas):
-   IF layerId is already known (from Step 0b or context):
-     getLayer(layerId=<knownLayerId>)
-     → read existing nodes/edges; remember actorId + laId for each
-     → DO NOT create a new layer
-   ELSE (user requested a new graph):
-     createActor(formId=<graphFormId>, body='{"title": "<graph name>"}')
-     → save returned actorId as graphId
-     createActor(formId=<layerFormId>, body='{"title": "<graph name>"}')
-     → save returned actorId as layerId
-     createLink(body='{"source":"<graphId>","target":"<layerId>"}')
-     → getLayer(layerId=<new layerId>)   // confirm empty state
-```
-
-### Step 2 — Create Each Block (repeat per node)
-
-```
-// 2a. Create the actor — formId is the CHILD form id from sys-forms.yaml; NO data field; always pass color
-// Example: formId = id where title=="Start / Stop" in FlowchartBlock.childs
-createActor(
-  formId=<startStopFormId>,
-  body='{"title": "Start", "color": "#4caf50"}')
-→ save actorId from response
-
-// 2b. Place node on layer → get laId (REQUIRED; block won't appear without this)
-manageLayer(
-  layerId="<graphActorId>",
-  body='[
-    {"action":"create","data":{"id":"<actorId>","type":"node","position":{"x":<X>,"y":<Y>}}}
-  ]')
-→ save laId from response.data.nodesMap[0].laId
-```
-
-### Step 3 — Create Links Between Blocks
-
-**Preferred (batch):** pass `layerId` to `massLink` — the server places all edges on the
-layer automatically, no extra call needed.
-
-```
-massLink(
-  layerId="<graphActorId>",
-  body='[
-    {"source":"<actorA>","target":"<actorB>"},
-    {"source":"<actorB>","target":"<actorC>"}
-  ]')
-# → edges created AND drawn on layer in one call
-```
-
-**Single link (fallback):** two calls are required.
-
-```
-// 3a. Create logical link
-createLink(
-  body='{"source":"<actorA>","target":"<actorB>"}')
-→ save edgeId from response.data.id
-
-// 3b. Draw edge on layer — use laIds from step 2b, not actorIds
-manageLayer(
-  layerId="<graphActorId>",
-  body='[
-    {"action":"create","data":{"id":"<edgeId>","type":"edge","laIdSource":<laId A>,"laIdTarget":<laId B>}}
-  ]')
-```
-
----
-
-## Layout Algorithm — Auto Coordinate Calculation
-
-**Never hardcode coordinates.** Always calculate using dagre/Sugiyama layout.
-
-### Step 1 — Node Sizes by template title
+### Node Sizes
 
 ```
 SIZES = {
@@ -358,9 +200,10 @@ SIZES = {
   "Data":                 { w: 200, h: 60  },
   "Document":             { w: 200, h: 70  }
 }
+default:                  { w: 200, h: 50  }
 ```
 
-### Step 2 — Rank Assignment (BFS from start node)
+### Rank Assignment (BFS from start node)
 
 ```
 rank[start] = 0
@@ -368,27 +211,21 @@ for each edge source → target:
   rank[target] = max(rank[target] ?? 0, rank[source] + 1)
 ```
 
-### Step 3 — Group by Rank
-
-```
-ranks = { 0: [nodeA], 1: [nodeB, nodeC], 2: [nodeD, nodeE, nodeF], ... }
-```
-
-### Step 4 — Gaps
+### Gap Calculation
 
 ```
 nodeSep(rank) = max(max_w_in_rank * 0.3, 60)    // horizontal gap between centers
 rankSep(r)    = max(max_h_in_rank(r) * 1.2, 80) // vertical gap between rows
 ```
 
-### Step 5 — Y Coordinates (top → down)
+### Y Coordinates (top → down)
 
 ```
 y[rank_0] = 0
 y[rank_n] = y[rank_n-1] + max_h(rank_n-1)/2 + rankSep(rank_n-1) + max_h(rank_n)/2
 ```
 
-### Step 6 — X Coordinates (center each row)
+### X Coordinates (center each row)
 
 ```
 for each rank with N nodes:
@@ -399,62 +236,265 @@ for each rank with N nodes:
 
 ### Examples
 
-- **3 Start/Stop blocks in a row** (w=200, nodeSep=60, c2c=260, span=520) → x = [-260, 0, 260]
-- **6 Process blocks in a row** (w=200, nodeSep=60, c2c=260, span=1300) → x = [-650, -390, -130, 130, 390, 650]
-- **Start/Stop(h=50) → Process(h=50)** → rankSep=80, y[rank_1] = 0+25+80+25 = 130
-- **Process(h=50) → Decision(h=100)** → rankSep=80, y[rank_2] = 130+25+80+50 = 285
+- **3 Start/Stop blocks in a row** (w=200, nodeSep=60, c2c=260) → x = [-260, 0, 260]
+- **Start/Stop(h=50) → Process(h=50)** → y[rank_1] = 0+25+80+25 = 130
+- **Process(h=50) → Decision(h=100)** → y[rank_2] = 130+25+80+50 = 285
 
 ---
 
 ## Complete Example: Build a Flowchart
 
 ```
-# 0. Read sys-forms.yaml (current working directory) and extract form ids
-Read sys-forms.yaml
-# → graphFormId     = id where title=="Graphs"
-# → layerFormId     = id where title=="Layers"
-# → startStopFormId = id in FlowchartBlock.childs where title=="Start / Stop"
-# → processFormId   = id in FlowchartBlock.childs where title=="Process"
-# → decisionFormId  = id in FlowchartBlock.childs where title=="Decision"
+// Step 1 — Create Graph + Layer (skip if layerId already known)
+createActor(formName="Graphs", body='{"title":"Order Processing"}')  → graphId
+createActor(formName="Layers", body='{"title":"Order Processing"}')  → layerId
+createLink(body='{"source":"<graphId>","target":"<layerId>"}')
 
-# 1. Resolve the layer (see Step 0b — use existing if layerId is already known)
-#    CASE A: layerId already known → use it directly
-getLayer(layerId="<known layerId>")
-# → read existing nodes/edges, remember laIds — do NOT create a new layer
+// Step 2 — Write <layerId>.yaml
+```
 
-#    CASE B: new graph requested → create Graph + Layer actors and link them
-# createActor(formId=<graphFormId>, body='{"title":"My Graph"}')   # → graphId
-# createActor(formId=<layerFormId>, body='{"title":"My Graph"}')   # → layerId
-# createLink(body='{"source":"<graphId>","target":"<layerId>"}')
-# getLayer(layerId=<layerId>)   // confirm empty state
+```yaml
+layerId: "<layerId>"
+actors:
+  - id: start
+    title: "Start"
+    formName: "Start / Stop"
+    color: "#17B26A"
+    position: { x: 0, y: 0 }
+  - id: validate
+    title: "Validate Order"
+    formName: "Process"
+    color: "#539fdf"
+    position: { x: 0, y: 130 }
+  - id: check
+    title: "Valid?"
+    formName: "Decision"
+    color: "#F79009"
+    position: { x: 0, y: 285 }
+  - id: process
+    title: "Process Payment"
+    formName: "Process"
+    color: "#539fdf"
+    position: { x: 260, y: 440 }
+  - id: error
+    title: "Return Error"
+    formName: "Process"
+    color: "#F04438"
+    position: { x: -260, y: 440 }
+  - id: end
+    title: "End"
+    formName: "Start / Stop"
+    color: "#17B26A"
+    position: { x: 0, y: 595 }
+edges:
+  - source: start
+    target: validate
+  - source: validate
+    target: check
+  - source: check
+    target: process
+  - source: check
+    target: error
+  - source: process
+    target: end
+  - source: error
+    target: end
+```
 
-# 2. Create flowchart blocks — NO data field, server auto-injects shape; always pass color
-createActor(formId=<startStopFormId>, body='{"title":"Start",    "color":"#4caf50"}')  # → actor_start
-createActor(formId=<processFormId>,   body='{"title":"Validate", "color":"#2196f3"}')  # → actor_validate
-createActor(formId=<decisionFormId>,  body='{"title":"OK?",      "color":"#ff9800"}')  # → actor_decision
-createActor(formId=<startStopFormId>, body='{"title":"Stop",     "color":"#4caf50"}')  # → actor_stop
+```
+// Step 3 — Push to server
+pushGraphFile(layerId="<layerId>")
+// → all actors created, edges drawn, file updated with server UUIDs
+```
 
-# 3. Place blocks on the layer (positions from layout algorithm above)
-manageLayer(
-  layerId="<graphActorId>",
-  body='[
-    {"action":"create","data":{"id":"actor_start",   "type":"node","position":{"x":0,  "y":0  }}},
-    {"action":"create","data":{"id":"actor_validate","type":"node","position":{"x":0,  "y":130}}},
-    {"action":"create","data":{"id":"actor_decision","type":"node","position":{"x":0,  "y":285}}},
-    {"action":"create","data":{"id":"actor_stop",    "type":"node","position":{"x":0,  "y":440}}}
-  ]')
-# Save each returned laId (laStart, laValidate, laDecision, laStop)
+---
 
-# 4. Create logical links AND place them on the layer in one call
-#    Pass layerId → server auto-calls manageLayer after creating the edges
-massLink(
-  layerId="<graphActorId>",
-  body='[
-    {"source":"actor_start",    "target":"actor_validate"},
-    {"source":"actor_validate", "target":"actor_decision"},
-    {"source":"actor_decision", "target":"actor_stop"}
-  ]')
-# → edges are created AND drawn on the layer automatically (no step 5 needed)
+## Form Catalog — All Available Form Names
+
+Pass `formName` to `createActor` or in the graph YAML file.
+The server resolves the name to ID automatically.
+
+### Graph & Layer
+
+| formName | Usage |
+|---|---|
+| `"Graphs"` | Graph container actor |
+| `"Layers"` | Layer (visual canvas) actor |
+
+### Flowchart Blocks
+
+> Always set `color` (hex string) for flowchart blocks.
+
+| formName               | Description |
+|------------------------|---|
+| `"Start / Stop"`       | Start or end node |
+| `"Process"`            | Process step |
+| `"Decision"`           | Decision diamond |
+| `"Predefined Process"` | Predefined / subroutine process |
+| `"Document"`           | Document shape |
+| `"Data"`               | Data parallelogram |
+| `"Documents"`          | Multi-document stack |
+| `"Stored Data"`        | Stored data shape |
+| `"Off-page Reference"` | Off-page connector |
+| `"Preparation"`        | Preparation / initialization |
+| `"API Call"`           | API call block |
+| `"Manual Input"`       | Manual input |
+| `"Delay"`              | Delay block |
+| `"Database"`           | Database cylinder |
+| `"Manual Operation"`   | Manual operation |
+| `"Terminator"`         | Oval terminator |
+| `"Root Node"`          | Root node |
+| `"Null"`               | Universal generic node |
+| `"Flowchart"`          | Nested flowchart reference |
+
+### Diagram Types
+
+| formName | Description |
+|---|---|
+| `"Petri Net"` | Petri net diagram |
+| `"Sequence Diagram"` | Sequence diagram |
+| `"Actor Graph"` | Actor graph |
+| `"Mind Map"` | Mind map |
+| `"Corezoid"` | Corezoid process diagram |
+
+### Corezoid Nodes
+
+| formName | Description |
+|---|---|
+| `"Corezoid Start"` | Entry point |
+| `"Corezoid API Call"` | External API call |
+| `"Corezoid Condition"` | Condition / routing |
+| `"Corezoid Code"` | Code execution |
+| `"Corezoid Copy Task"` | Copy task |
+| `"Corezoid Modify Task"` | Modify task |
+| `"Corezoid Sum"` | Aggregation / sum |
+| `"Corezoid Delay"` | Time delay |
+| `"Corezoid Database Call"` | DB call |
+| `"Corezoid Waiting for Callback"` | Async wait |
+| `"Corezoid Call a Process"` | Sub-process call |
+| `"Corezoid Reply to Process"` | Reply to caller |
+| `"Corezoid Queue"` | Queue node |
+| `"Corezoid Get from Queue"` | Dequeue |
+| `"Corezoid Set Parameters"` | Set task parameters |
+| `"Corezoid End: Success"` | Success terminal |
+| `"Corezoid End: Error"` | Error terminal |
+| `"Corezoid GIT Call"` | GIT call |
+
+### AWS Services
+
+| formName | formName | formName |
+|---|---|---|
+| `"EC2"` | `"Lambda"` | `"RDS"` |
+| `"App Runner"` | `"EKS Cloud"` | `"EKS Distro"` |
+| `"EFS"` | `"Client VPN"` | `"Elastic Container Registry"` |
+| `"Certificate Manager"` | `"Simple Queue Service"` | `"Inspector"` |
+| `"GuardDuty"` | `"Data Pipeline"` | `"Kinesis"` |
+| `"Key Management Service"` | `"DynamoDB"` | `"Elastic Kubernetes Service"` |
+| `"Secrets Manager"` | `"Elastic Load Balancing"` | `"Route 53"` |
+| `"ElastiCache"` | `"CloudWatch"` | `"Transfer Family"` |
+| `"Managed Streaming for Apache Kafka"` | `"Amplify"` | `"Budgets"` |
+| `"Simple Storage Service"` | `"Transit Gateway"` | `"Network Firewall"` |
+| `"OpenSearch Service"` | `"WAF"` | `"Virtual Private Cloud"` |
+| `"Simple Notification Service"` | `"API Gateway"` | `"Transcribe"` |
+| `"Athena"` | `"QuickSight"` | `"CloudFront"` |
+| `"Global Accelerator"` | `"Backup"` | `"DocumentDB"` |
+| `"Glue"` | `"RDS on VMware"` | |
+
+### AI / ML
+
+| formName | Description |
+|---|---|
+| `"GPT"` | GPT model node |
+| `"Anthropic"` | Anthropic model node |
+| `"Grok"` | Grok model node |
+| `"SLM"` | Small language model |
+| `"Devin"` | Devin AI agent |
+| `"Black box (Mind)"` | Opaque mind component |
+| `"Black box (LLM)"` | Opaque LLM component |
+| `"Black box (Actor)"` | Opaque actor component |
+| `"Black box (Seq)"` | Opaque sequence component |
+| `"Grey box (Actor)"` | Semi-transparent actor |
+| `"Grey box (Mind)"` | Semi-transparent mind |
+| `"Grey box (LLM)"` | Semi-transparent LLM |
+| `"Grey box (Seq)"` | Semi-transparent sequence |
+
+### UML / OOP
+
+| formName | Description |
+|---|---|
+| `"Class"` | UML class |
+| `"Interface"` | UML interface |
+| `"Component"` | UML component |
+| `"Package"` | UML package |
+| `"Artifact"` | UML artifact |
+
+### Other
+
+| formName | Description |
+|---|---|
+| `"Human"` | Human participant |
+| `"Node"` | Generic network node |
+| `"Branch Node"` | Branch point |
+| `"White box"` | Transparent white container |
+| `"Place"` | Physical location |
+| `"Token"` | Token / badge |
+| `"Flag"` | Flag marker |
+| `"Program"` | Program block |
+| `"Current Position"` | Current position marker |
+| `"Transition"` | State transition |
+| `"Stubnet"` | Stub network |
+| `"Marketplace"` | Marketplace node |
+
+---
+
+## Low-Level MCP Tools (one-off operations)
+
+Use these for targeted queries, not for building graphs (use the file workflow instead).
+
+### Actor Operations
+
+```
+createActor(formName="Process", body='{"title":"Step","color":"#539fdf"}')
+createActors(formName="Process", actors='[{"title":"A","color":"#539fdf"},{"title":"B","color":"#539fdf"}]')
+getActor(actorId="<actorId>")
+updateActor(formId=<formId>, actorId="<actorId>", body='{"title":"Updated"}')
+deleteActor(actorId="<actorId>")
+deleteBulk(body='{"actorIds":["<a1>","<a2>"]}')
+```
+
+### Link Operations
+
+```
+// Preferred — creates links AND places them on the layer automatically
+massLink(layerId="<layerId>", body='[{"source":"<a>","target":"<b>"}]')
+
+// Single link — two calls required (logical + visual)
+createLink(body='{"source":"<a>","target":"<b>"}')   → edgeId
+manageLayer(layerId="<layerId>", body='[{"action":"create","data":{"id":"<edgeId>","type":"edge","laIdSource":<laA>,"laIdTarget":<laB>}}]')
+
+existLink(body='{"source":"<a>","target":"<b>"}')
+updateLink(edgeId="<edgeId>", body='{"data":{"weight":5}}')
+deleteLink(edgeId="<edgeId>")
+bulkDeleteLinks(body='{"edgeIds":["<e1>","<e2>"]}')
+```
+
+### Layer Operations
+
+```
+getLayer(layerId="<layerId>")            // read full layer state with laIds
+searchLayerActors(layerId="<layerId>", query="...")
+getLayerActorsByFormId(layerId="<layerId>", formId=<formId>)
+cleanLayer(layerId="<layerId>")          // remove all from view (actors remain)
+moveElements(sourceLayerId="<la>", targetLayerId="<lb>", body='{"actorIds":["<a1>"]}')
+```
+
+### Graph Traversal
+
+```
+getActorLinks(actorId="<actorId>")
+getLinkedActors(actorId="<actorId>")
+getLinked(actorId="<actorId>", type="children")   // "children"|"parents"|"all"
+actorGlobalLayers(actorId="<actorId>")
 ```
 
 ---
@@ -466,71 +506,43 @@ massLink(
 ```
 getAccounts(actorId="<actor>")
 getAccount(accountId="<acc>")
-getAccountsByCurAccName(actorId="<actor>", currencyId="<cur>", nameId="<name>")
-getChildrenAccounts(actorId="<actor>")
-
 createAccounts(actorId="<actor>", body='{"nameId":"<name>","currencyId":"<cur>","accountType":"default"}')
-postAccounts( body='{"accountName":"Balance","currencyName":"USD"}')   // pair (debit+credit)
+postAccounts(body='{"accountName":"Balance","currencyName":"USD"}')
 setAmount(accountId="<acc>", body='{"amount":1000}')
-blockAccount(actorId="<actor>", body='{"nameId":"<name>","currencyId":"<cur>","type":"default","status":"blocked"}')
-
 delAccounts(actorId="<actor>", currencyId="<cur>", nameId="<name>", accountType="default")
 ```
-
 
 ### Currencies & Account Names
 
 ```
 getCurrencies()
-createCurrency( body='{"name":"USD"}')
+createCurrency(body='{"name":"USD"}')
 getAccountNames()
-createAccountName( body='{"name":"Balance","abbreviation":"BAL"}')
+createAccountName(body='{"name":"Balance","abbreviation":"BAL"}')
 ```
-
----
-
-## ⚠️ Missing Tools — Gaps vs Old MCP Server
-
-These tools from the previous MCP server have **no equivalent** in the current
-swagger-generated server:
-
-| Old Tool | Status | Notes |
-|---|---|---|
-| `simulator_validate_link` | **Missing** | `existLink` only reports whether a link already exists. |
-| `simulator_get_graph_layer_paginated` | **Missing** | Use `getLayer` (returns full layer at once). |
-| Reactions (comment, sign, done, rating, reject, freeze) | **Missing** | Not exposed. |
-| File upload / attachment | **Missing** | Not exposed. |
-| Transfers (`createTransfer`, `getTransfer`, `postTransfersFilter`, …) | **Missing** | Not present in current swagger. |
-
----
 
 ---
 
 ## Key Rules
 
-- **Always read `sys-forms.yaml` from the current working directory first** (Step 0a) to look up all form ids by title. Never hardcode numeric form ids.
-- **If `layerId` is already known** (from user message, conversation history, or session context) → **use it directly, never create a new layer**. Call `getLayer(layerId=<known>)` to read current state and continue from there.
-- **For system forms (anything in `sys-forms.yaml`), do NOT pass `data`** — the server auto-injects shape/view/blockId from the form definition. Pass only `title`, `description`, `color`, etc.
-- **Always pass `color`** (hex string) when creating an actor — use the default from the title→color table in Step 0a or apply the user's requested color.
-- **Every link needs TWO calls to appear on the graph**: `createLink` (logical) + `manageLayer` with `type:"edge"` (visual). Missing the second call = invisible arrows.
-- Use the **child** form's id as `formId`, not the parent's (e.g. the id of "Start / Stop" child, not the id of "FlowchartBlock" parent).
-- `laId` ≠ `actorId`. `laId` is assigned by `manageLayer` when you place an actor on a layer; reuse it for edges.
-- `cleanLayer` only removes actors from the view; the actors themselves still exist.
-- Prefer `massLink` over many `createLink` calls — it's atomic and efficient.
-- Space actors ~200–300 px apart when laying out; use the layout algorithm rather than hardcoded coordinates.
-- `searchActors` searches globally across the workspace; `searchLayerActors` / `getLayerActorsByFormId` scope to a single layer.
+- **File-based workflow is preferred** for building and editing graphs — write a YAML file, then `pushGraphFile`.
+- **Create Graph + Layer first**, then work with the layer's YAML file. Never skip the graph→layer link.
+- **`formName` takes priority over `formId`** in the YAML file and in `createActor` calls.
+- **Do NOT include `data`** in the YAML for system forms — the server auto-injects shape/view/blockId.
+- **Always set `color`** (hex string) for flowchart blocks.
+- **Local `id` values** in the YAML are replaced with server UUIDs after `pushGraphFile`. Use short readable names (`start`, `validate`, `end`) for new actors.
+- **`pullGraphFile` → edit → `pushGraphFile`** is the standard edit cycle for existing layers.
+- `laId` ≠ `actorId`. The file workflow handles laId management automatically.
+- Space actors ~200–300 px apart; use the layout algorithm for coordinates.
 
 ---
 
 ## Reference Documents
 
-Use the `Read` tool to load these files when you need more detail:
-
 | Path | When to read |
 |---|---|
-| `sys-forms.yaml` (current working directory) | **Always read first (Step 0a)** — catalog of all system forms with numeric ids. Look up `graphFormId`, `layerFormId`, and all FlowchartBlock child template ids here. |
 | `$CLAUDE_PLUGIN_ROOT/docs/entities/actors.md` | Full actor property list and types |
 | `$CLAUDE_PLUGIN_ROOT/docs/entities/links.md` | Link/edge properties and type system |
-| `$CLAUDE_PLUGIN_ROOT/docs/entities/layers.md` | Layer types (tree, graph, process, dashboard) and behavior |
-| `$CLAUDE_PLUGIN_ROOT/docs/user-flows/graph-functionality.md` | Complete graph building walkthrough with test scenarios |
+| `$CLAUDE_PLUGIN_ROOT/docs/entities/layers.md` | Layer types and behavior |
+| `$CLAUDE_PLUGIN_ROOT/docs/user-flows/graph-functionality.md` | Graph building walkthrough with test scenarios |
 | `$CLAUDE_PLUGIN_ROOT/docs/user-flows/actor-graph-management.md` | Managing actors on graphs — practical patterns |
