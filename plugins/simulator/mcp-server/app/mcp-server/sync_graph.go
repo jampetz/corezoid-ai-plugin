@@ -494,10 +494,12 @@ func handlePushGraphFile(ctx context.Context, req mcp.CallToolRequest) (*mcp.Cal
 	// idMap: file id (local or UUID) → server UUID
 	idMap := make(map[string]string, len(graph.Actors))
 	fileUUIDs := make(map[string]bool, len(graph.Actors))
+	// replacedUUIDs: old UUIDs already queued for layer-removal due to formId change
+	replacedUUIDs := make(map[string]bool)
 
 	var nodeManageItems []manageLayerItem
 	var posUpdates []map[string]interface{}
-	stats := struct{ created, updated, unchanged, deleted int }{}
+	stats := struct{ created, updated, unchanged, deleted, recreated int }{}
 
 	for i := range graph.Actors {
 		a := &graph.Actors[i]
@@ -509,21 +511,63 @@ func handlePushGraphFile(ctx context.Context, req mcp.CallToolRequest) (*mcp.Cal
 
 			sa, onLayer := serverActorByUUID[origID]
 			if onLayer {
-				changed, updateErr := updateGraphActor(ctx, sa, *a)
-				if updateErr != nil {
-					log.Printf("Warning: update actor %s: %v", origID, updateErr)
+				// Resolve file-side formId (prefer formName over numeric formId).
+				fileFormID := a.FormID
+				if a.FormName != "" {
+					if _, loadErr := loadSysForms(); loadErr == nil {
+						if id := resolveFormNameToID(a.FormName); id != 0 {
+							fileFormID = id
+						}
+					}
 				}
-				if changed {
-					stats.updated++
+				serverFormID := formIDFromLayerActor(sa)
+
+				if fileFormID != 0 && serverFormID != 0 && fileFormID != serverFormID {
+					// formId mismatch: cannot update in place.
+					// Remove old actor from layer, create a new one, remap the UUID.
+					var delItem manageLayerItem
+					delItem.Action = "delete"
+					delItem.Data.ID = origID
+					delItem.Data.Type = "node"
+					delItem.Data.LaID = sa.LaID
+					nodeManageItems = append(nodeManageItems, delItem)
+					replacedUUIDs[origID] = true
+
+					serverUUID, createErr := createGraphActor(ctx, *a)
+					if createErr != nil {
+						return mcp.NewToolResultError(fmt.Sprintf(
+							"[Error] recreate actor %q (formId %d→%d): %v",
+							a.Title, serverFormID, fileFormID, createErr)), nil
+					}
+					idMap[origID] = serverUUID
+					a.ID = serverUUID
+					fileUUIDs[serverUUID] = true
+
+					var addItem manageLayerItem
+					addItem.Action = "create"
+					addItem.Data.ID = serverUUID
+					addItem.Data.Type = "node"
+					addItem.Data.Position.X = a.Position.X
+					addItem.Data.Position.Y = a.Position.Y
+					nodeManageItems = append(nodeManageItems, addItem)
+					stats.recreated++
 				} else {
-					stats.unchanged++
-				}
-				// Queue position update if changed
-				if sa.Position.X != a.Position.X || sa.Position.Y != a.Position.Y {
-					posUpdates = append(posUpdates, map[string]interface{}{
-						"id":       sa.LaID,
-						"position": map[string]int{"x": a.Position.X, "y": a.Position.Y},
-					})
+					changed, updateErr := updateGraphActor(ctx, sa, *a)
+					if updateErr != nil {
+						log.Printf("Warning: update actor %s: %v", origID, updateErr)
+					}
+					if changed {
+						stats.updated++
+					} else {
+						stats.unchanged++
+					}
+					// Queue position update if changed
+					if sa.Position.X != a.Position.X || sa.Position.Y != a.Position.Y {
+						posUpdates = append(posUpdates, map[string]interface{}{
+							"id":       sa.LaID,
+							"position": map[string]int{"x": a.Position.X, "y": a.Position.Y},
+						})
+					}
 				}
 			} else {
 				// UUID in file but not on layer → add to layer
@@ -557,9 +601,9 @@ func handlePushGraphFile(ctx context.Context, req mcp.CallToolRequest) (*mcp.Cal
 		}
 	}
 
-	// Server actors not in file → remove from layer
+	// Server actors not in file → remove from layer (skip already-replaced ones)
 	for _, sa := range serverActors {
-		if !fileUUIDs[sa.ID] {
+		if !fileUUIDs[sa.ID] && !replacedUUIDs[sa.ID] {
 			var item manageLayerItem
 			item.Action = "delete"
 			item.Data.ID = sa.ID
@@ -690,6 +734,7 @@ func handlePushGraphFile(ctx context.Context, req mcp.CallToolRequest) (*mcp.Cal
 			"updated":   stats.updated,
 			"unchanged": stats.unchanged,
 			"deleted":   stats.deleted,
+			"recreated": stats.recreated,
 		},
 		"edges": map[string]int{
 			"created": statsEdge.created,
