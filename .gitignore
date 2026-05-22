@@ -7,3 +7,4 @@ package-lock.json
 .vscode
 convctl
 yarn.lock
+/plugins/simulator/mcp-server/info

@@ -10,7 +10,7 @@ import (
 	"os"
 	"strings"
 
-	"git.corezoid.com/mw161089sar/swagger-mcp/app/models"
+	"github.com/corezoid/corezoid-ai-plugin/plugins/simulator/mcp-server/app/models"
 )
 
 // GetSpecVersion determines the OpenAPI/Swagger version from the spec

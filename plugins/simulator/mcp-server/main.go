@@ -9,9 +9,9 @@ import (
 	"os"
 	"strings"
 
-	mcpserver "git.corezoid.com/mw161089sar/swagger-mcp/app/mcp-server"
-	"git.corezoid.com/mw161089sar/swagger-mcp/app/models"
-	"git.corezoid.com/mw161089sar/swagger-mcp/app/swagger"
+	mcpserver "github.com/corezoid/corezoid-ai-plugin/plugins/simulator/mcp-server/app/mcp-server"
+	"github.com/corezoid/corezoid-ai-plugin/plugins/simulator/mcp-server/app/models"
+	"github.com/corezoid/corezoid-ai-plugin/plugins/simulator/mcp-server/app/swagger"
 )
 
 func setupLogging() {

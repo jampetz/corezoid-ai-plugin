@@ -19,8 +19,8 @@ import (
 	"sync"
 	"time"
 
-	"git.corezoid.com/mw161089sar/swagger-mcp/app/auth"
-	"git.corezoid.com/mw161089sar/swagger-mcp/app/models"
+	"github.com/corezoid/corezoid-ai-plugin/plugins/simulator/mcp-server/app/auth"
+	"github.com/corezoid/corezoid-ai-plugin/plugins/simulator/mcp-server/app/models"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"gopkg.in/yaml.v3"

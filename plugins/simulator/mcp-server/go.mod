@@ -1,4 +1,4 @@
-module git.corezoid.com/mw161089sar/swagger-mcp
+module github.com/corezoid/corezoid-ai-plugin/plugins/simulator/mcp-server
 
 go 1.25.5
 
