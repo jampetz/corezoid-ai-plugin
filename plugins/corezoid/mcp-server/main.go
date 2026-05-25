@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"log/slog"
 	"os"
@@ -265,91 +264,91 @@ func ValidateJSONSchema(filePath string, debug bool) error {
 }`
 
 	// Read all the schema files
-	processSchema, err := ioutil.ReadFile(filepath.Join(tmpDir, "process.json"))
+	processSchema, err := os.ReadFile(filepath.Join(tmpDir, "process.json"))
 	if err != nil {
 		return fmt.Errorf("failed to read process.json: %v", err)
 	}
-	nodeSchema, err := ioutil.ReadFile(filepath.Join(tmpDir, "node.json"))
+	nodeSchema, err := os.ReadFile(filepath.Join(tmpDir, "node.json"))
 	if err != nil {
 		return fmt.Errorf("failed to read node.json: %v", err)
 	}
-	conditionSchema, err := ioutil.ReadFile(filepath.Join(logicsDir, "condition.json"))
+	conditionSchema, err := os.ReadFile(filepath.Join(logicsDir, "condition.json"))
 	if err != nil {
 		return fmt.Errorf("failed to read logics/condition.json: %v", err)
 	}
-	logicsSchema, err := ioutil.ReadFile(filepath.Join(tmpDir, "logics.json"))
+	logicsSchema, err := os.ReadFile(filepath.Join(tmpDir, "logics.json"))
 	if err != nil {
 		return fmt.Errorf("failed to read logics.json: %v", err)
 	}
-	semaphorsSchema, err := ioutil.ReadFile(filepath.Join(logicsDir, "semaphors.json"))
+	semaphorsSchema, err := os.ReadFile(filepath.Join(logicsDir, "semaphors.json"))
 	if err != nil {
 		return fmt.Errorf("failed to read logics/semaphors.json: %v", err)
 	}
-	goSchema, err := ioutil.ReadFile(filepath.Join(logicsDir, "go.json"))
+	goSchema, err := os.ReadFile(filepath.Join(logicsDir, "go.json"))
 	if err != nil {
 		return fmt.Errorf("failed to read logics/go.json: %v", err)
 	}
-	goIfConstSchema, err := ioutil.ReadFile(filepath.Join(logicsDir, "go_if_const.json"))
+	goIfConstSchema, err := os.ReadFile(filepath.Join(logicsDir, "go_if_const.json"))
 	if err != nil {
 		return fmt.Errorf("failed to read logics/go_if_const.json: %v", err)
 	}
-	setParamSchema, err := ioutil.ReadFile(filepath.Join(logicsDir, "set_param.json"))
+	setParamSchema, err := os.ReadFile(filepath.Join(logicsDir, "set_param.json"))
 	if err != nil {
 		return fmt.Errorf("failed to read logics/set_param.json: %v", err)
 	}
-	apiSchema, err := ioutil.ReadFile(filepath.Join(logicsDir, "api.json"))
+	apiSchema, err := os.ReadFile(filepath.Join(logicsDir, "api.json"))
 	if err != nil {
 		return fmt.Errorf("failed to read logics/api.json: %v", err)
 	}
-	apiCallbackSchema, err := ioutil.ReadFile(filepath.Join(logicsDir, "api_callback.json"))
+	apiCallbackSchema, err := os.ReadFile(filepath.Join(logicsDir, "api_callback.json"))
 	if err != nil {
 		return fmt.Errorf("failed to read logics/api_callback.json: %v", err)
 	}
-	apiSumSchema, err := ioutil.ReadFile(filepath.Join(logicsDir, "api_sum.json"))
+	apiSumSchema, err := os.ReadFile(filepath.Join(logicsDir, "api_sum.json"))
 	if err != nil {
 		return fmt.Errorf("failed to read logics/api_sum.json: %v", err)
 	}
-	apiCodeSchema, err := ioutil.ReadFile(filepath.Join(logicsDir, "api_code.json"))
+	apiCodeSchema, err := os.ReadFile(filepath.Join(logicsDir, "api_code.json"))
 	if err != nil {
 		return fmt.Errorf("failed to read logics/api_code.json: %v", err)
 	}
-	apiCopySchema, err := ioutil.ReadFile(filepath.Join(logicsDir, "api_copy.json"))
+	apiCopySchema, err := os.ReadFile(filepath.Join(logicsDir, "api_copy.json"))
 	if err != nil {
 		return fmt.Errorf("failed to read logics/api_copy.json: %v", err)
 	}
-	apiRpcSchema, err := ioutil.ReadFile(filepath.Join(logicsDir, "api_rpc.json"))
+	apiRpcSchema, err := os.ReadFile(filepath.Join(logicsDir, "api_rpc.json"))
 	if err != nil {
 		return fmt.Errorf("failed to read logics/api_rpc.json: %v", err)
 	}
-	apiRpcReplySchema, err := ioutil.ReadFile(filepath.Join(logicsDir, "api_rpc_reply.json"))
+	apiRpcReplySchema, err := os.ReadFile(filepath.Join(logicsDir, "api_rpc_reply.json"))
 	if err != nil {
 		return fmt.Errorf("failed to read logics/api_rpc_reply.json: %v", err)
 	}
-	apiQueueSchema, err := ioutil.ReadFile(filepath.Join(logicsDir, "api_queue.json"))
+	apiQueueSchema, err := os.ReadFile(filepath.Join(logicsDir, "api_queue.json"))
 	if err != nil {
 		return fmt.Errorf("failed to read logics/api_queue.json: %v", err)
 	}
-	apiGetTaskSchema, err := ioutil.ReadFile(filepath.Join(logicsDir, "api_get_task.json"))
+	apiGetTaskSchema, err := os.ReadFile(filepath.Join(logicsDir, "api_get_task.json"))
 	if err != nil {
 		return fmt.Errorf("failed to read logics/api_get_task.json: %v", err)
 	}
-	apiFormSchema, err := ioutil.ReadFile(filepath.Join(logicsDir, "api_form.json"))
+	apiFormSchema, err := os.ReadFile(filepath.Join(logicsDir, "api_form.json"))
 	if err != nil {
 		return fmt.Errorf("failed to read logics/api_form.json: %v", err)
 	}
-	apiGitSchema, err := ioutil.ReadFile(filepath.Join(logicsDir, "api_git.json"))
+	apiGitSchema, err := os.ReadFile(filepath.Join(logicsDir, "api_git.json"))
 	if err != nil {
 		return fmt.Errorf("failed to read logics/api_git.json: %v", err)
 	}
-	dbCallSchema, err := ioutil.ReadFile(filepath.Join(logicsDir, "db_call.json"))
+	dbCallSchema, err := os.ReadFile(filepath.Join(logicsDir, "db_call.json"))
 	if err != nil {
 		return fmt.Errorf("failed to read logics/db_call.json: %v", err)
 	}
-	semaphoreTimeSchema, err := ioutil.ReadFile(filepath.Join(logicsDir, "semaphore_time.json"))
+	semaphoreTimeSchema, err := os.ReadFile(filepath.Join(logicsDir, "semaphore_time.json"))
 	if err != nil {
 		return fmt.Errorf("failed to read logics/semaphore_time.json: %v", err)
 	}
-	semaphoreCountSchema, err := ioutil.ReadFile(filepath.Join(logicsDir, "semaphore_count.json"))
+	semaphoreCountSchema, err := os.ReadFile(filepath.Join(logicsDir, "semaphore_count.json"))
 	if err != nil {
 		return fmt.Errorf("failed to read logics/semaphore_count.json: %v", err)
 	}
@@ -382,7 +381,7 @@ func ValidateJSONSchema(filePath string, debug bool) error {
 	)
 
 	// Write the combined schema to a file
-	err = ioutil.WriteFile(combinedSchemaPath, []byte(combinedSchema), 0644)
+	err = os.WriteFile(combinedSchemaPath, []byte(combinedSchema), 0644)
 	if err != nil {
 		return fmt.Errorf("failed to write combined schema: %v", err)
 	}
@@ -395,18 +394,23 @@ func ValidateJSONSchema(filePath string, debug bool) error {
 	// Copy the input file to the temporary directory
 	inputFileName := filepath.Base(filePath)
 	tmpFilePath := filepath.Join(tmpDir, inputFileName)
-	inputContent, err := ioutil.ReadFile(filePath)
+	inputContent, err := os.ReadFile(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to read input file: %v", err)
 	}
-	err = ioutil.WriteFile(tmpFilePath, inputContent, 0644)
+	err = os.WriteFile(tmpFilePath, inputContent, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to copy input file to temporary directory: %v", err)
 	}
 
-	// Run the validation command
+	// Check that ajv CLI is available before running validation.
+	// ajv is an optional Node.js tool; if absent, schema validation is skipped with an install hint.
+	if _, err := exec.LookPath("ajv"); err != nil {
+		return fmt.Errorf("schema validation skipped: 'ajv' CLI not found (install with: npm install -g ajv-cli)")
+	}
+
 	cmd := exec.Command("ajv", "validate", "-s", "combined_schema.json", "-d", inputFileName, "--allow-union-types")
-	cmd.Dir = tmpDir // Set working directory to the temporary directory
+	cmd.Dir = tmpDir
 	if debug {
 		logger.Debug("Running validation command, command=%s, dir=%s", cmd.String(), tmpDir)
 	}
@@ -490,7 +494,7 @@ type NodeInfo struct {
 // LoadBinFromFile loads a JSON file and returns its content as a string
 func LoadBinFromFile(filePath string) (string, error) {
 	// Read the file
-	fileContent, err := ioutil.ReadFile(filePath)
+	fileContent, err := os.ReadFile(filePath)
 	if err != nil {
 		return "", fmt.Errorf("error reading file: %v", err)
 	}

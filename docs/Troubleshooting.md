@@ -58,6 +58,24 @@ export COREZOID_STAGE_ID=...
 
 ---
 
+## JSON Schema validation (lint-process)
+
+`lint-process` runs structural checks on every call. JSON Schema validation is an additional layer that requires the `ajv` CLI:
+
+```bash
+npm install -g ajv-cli
+```
+
+If `ajv` is not installed, `lint-process` still runs all structural checks and reports:
+
+```
+schema validation skipped: 'ajv' CLI not found (install with: npm install -g ajv-cli)
+```
+
+This is not a fatal error — the process can still be pushed if all structural checks pass.
+
+---
+
 ## Process operations
 
 ### `push-process` fails with validation error

@@ -39,7 +39,7 @@
 - New skills: `corezoid`, `corezoid-init`, `corezoid-create`, `corezoid-edit`, `corezoid-review`, `corezoid-project-review`.
 - MCP tools: `login`, `logout`, `pull-process`, `pull-folder`, `push-process`, `lint-process`, `run-task`, `create-process`, `create-folder`, `create-alias`, `create-variable`, `list-workspaces`, `list-projects`, `list-stages`, `list-task-history`, `list-node-tasks`, `modify-task`, `delete-task`, `create-dashboard`, `get-dashboard`, `add-chart`, `modify-chart`, `get-chart`, `set-dashboard-layout`.
 - Rename marketplace identifier from `corezoid-ai-plugin` to `corezoid`.
-- Add Simulator.Company as a second bundled plugin with its own MCP server and skills.
+- Simulator.Company was briefly bundled as a second plugin (removed in v2.3.3).
 
 ## [1.3.1]
 
