@@ -106,3 +106,4 @@ Then call `login` — it will skip already-set values and only prompt for what's
 | `ACCESS_TOKEN` | login step 2 — OAuth2 |
 | `WORKSPACE_ID` | login step 3 — workspace selection |
 | `COREZOID_STAGE_ID` | login step 4 — stage selection |
+| `COREZOID_OAUTH_CLIENT_ID` | pre-login (on-prem only) — OAuth2 client ID for deployments with a custom authorization server; cloud users do not need this |

@@ -101,11 +101,12 @@ export ACCESS_TOKEN=your_token_here
 
 | Environment variable       | Required | Description                                       |
 |----------------------------|----------|---------------------------------------------------|
-| `ACCESS_TOKEN`          | No       | Static token — overrides OAuth2 saved credentials |
+| `ACCESS_TOKEN`             | No       | Static token — overrides OAuth2 saved credentials |
 | `COREZOID_API_URL`         | No       | Override the default Corezoid API base URL        |
-| `WORKSPACE_ID`    | No       | Default workspace ID                              |
+| `WORKSPACE_ID`             | No       | Default workspace ID                              |
 | `COREZOID_STAGE_ID`        | No       | Default stage ID                                  |
 | `COREZOID_APIGW_URL`       | No       | Override the API Gateway URL                      |
+| `COREZOID_OAUTH_CLIENT_ID` | No       | OAuth2 client ID — on-prem deployments with a custom authorization server should set this to their own client ID; cloud (account.corezoid.com) users do not need it |
 
 ## Usage
 
