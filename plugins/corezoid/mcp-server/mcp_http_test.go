@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -116,7 +117,7 @@ func dispatchJSON(t *testing.T, method string, params interface{}) map[string]js
 		Method:  method,
 		Params:  rawParams,
 	}
-	result := httpDispatch(req)
+	result := httpDispatch(context.Background(), req)
 	raw, _ := json.Marshal(result)
 	var out map[string]json.RawMessage
 	json.Unmarshal(raw, &out) //nolint:errcheck
@@ -204,12 +205,12 @@ func TestHTTPDispatch_Notifications_ReturnNil(t *testing.T) {
 		Method:  "notifications/initialized",
 		Params:  json.RawMessage(`{}`),
 	}
-	if result := httpDispatch(req); result != nil {
+	if result := httpDispatch(context.Background(), req); result != nil {
 		t.Errorf("expected nil for notification, got %v", result)
 	}
 
 	req.Method = "notifications/cancelled"
-	if result := httpDispatch(req); result != nil {
+	if result := httpDispatch(context.Background(), req); result != nil {
 		t.Errorf("expected nil for notification, got %v", result)
 	}
 }
@@ -246,7 +247,7 @@ func TestHTTPDispatch_ToolsCall_InvalidParams(t *testing.T) {
 		Method:  "tools/call",
 		Params:  json.RawMessage(`not-json`),
 	}
-	result := httpDispatch(req)
+	result := httpDispatch(context.Background(), req)
 	raw, _ := json.Marshal(result)
 	var out map[string]json.RawMessage
 	json.Unmarshal(raw, &out) //nolint:errcheck

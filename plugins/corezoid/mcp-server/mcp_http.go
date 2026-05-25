@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,15 +11,25 @@ import (
 	"time"
 )
 
+// httpToolCallTimeout caps the duration of any single tool call served over
+// the HTTP transport. Without a cap, a stuck Corezoid API call (e.g. a slow
+// pull-folder against a very large workspace) would hold the request goroutine
+// open until the client gave up. 10 minutes matches the existing elicitation
+// timeout and is well above any reasonable interactive tool call.
+const httpToolCallTimeout = 10 * time.Minute
+
 // runHTTPServer starts the Streamable-HTTP MCP transport on addr.
 // Activate by setting COREZOID_HTTP_PORT (e.g. "8080").
 // In hosted environments credentials must be pre-configured via env vars;
 // the login tool (browser OAuth) is not usable from a remote server.
 func runHTTPServer(addr string) error {
 	// Load saved OAuth credentials the same way stdio mode does.
-	if apiToken == "" {
+	// Lock the check-then-set so the race detector sees a happens-before edge
+	// against the HTTP handlers we're about to start.
+	_, snapToken, _, _, _ := authSnapshot()
+	if snapToken == "" {
 		if creds, err := loadCredentials(); err == nil && creds != nil && !isCredentialsExpired(creds) {
-			apiToken = creds.AccessToken
+			withAuthLock(func() { apiToken = creds.AccessToken })
 			logger.Info("http: loaded saved credentials")
 		}
 	}
@@ -95,7 +106,7 @@ func httpHandlePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := httpDispatch(req)
+	resp := httpDispatch(r.Context(), req)
 	if resp == nil {
 		// Notification — accepted, no body.
 		w.WriteHeader(http.StatusAccepted)
@@ -124,7 +135,12 @@ func httpHandleSSE(w http.ResponseWriter, r *http.Request) {
 
 // httpDispatch routes an MCP JSON-RPC request and returns the response object.
 // Returns nil for notifications that require no response.
-func httpDispatch(req mcpRequest) interface{} {
+//
+// reqCtx is the HTTP request's context. For tools/call we derive a timeout-
+// bounded child so a wedged Corezoid API call can't pin the goroutine open
+// past httpToolCallTimeout. If the client disconnects the underlying r.Context
+// fires first and propagates cancellation downstream the same way.
+func httpDispatch(reqCtx context.Context, req mcpRequest) interface{} {
 	switch req.Method {
 	case "initialize":
 		return mcpResponse{
@@ -162,7 +178,9 @@ func httpDispatch(req mcpRequest) interface{} {
 		if err := json.Unmarshal(req.Params, &params); err != nil {
 			return httpJSONRPCError(req.ID, -32602, "invalid params: "+err.Error())
 		}
-		result, isErr := handleToolCall(params.Name, params.Arguments)
+		callCtx, cancel := context.WithTimeout(reqCtx, httpToolCallTimeout)
+		defer cancel()
+		result, isErr := handleToolCall(callCtx, params.Name, params.Arguments)
 		return mcpResponse{
 			JSONRPC: "2.0",
 			ID:      req.ID,

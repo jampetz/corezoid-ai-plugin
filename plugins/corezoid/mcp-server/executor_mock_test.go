@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -142,7 +143,7 @@ func TestNewValidator(t *testing.T) {
 	apiToken = "my-token"
 	t.Cleanup(func() { apiURL = origAPIURL; apiToken = origToken })
 
-	v := NewValidator(42)
+	v := NewValidator(context.Background(), 42)
 	if v == nil {
 		t.Fatal("expected non-nil Executor")
 	}
@@ -157,6 +158,9 @@ func TestNewValidator(t *testing.T) {
 	}
 	if v.NodeIDMap == nil {
 		t.Error("expected non-nil NodeIDMap")
+	}
+	if v.Ctx == nil {
+		t.Error("expected non-nil Ctx")
 	}
 }
 

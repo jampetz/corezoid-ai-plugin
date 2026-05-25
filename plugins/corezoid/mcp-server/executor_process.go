@@ -17,7 +17,7 @@ func (v *Executor) PullZip(id int, objType string) ([]byte, error) {
 			"type":       "create",
 			"obj":        "obj_scheme",
 			"obj_id":     id,
-			"company_id": workspaceID,
+			"company_id": v.WorkspaceID,
 			"obj_type":   objType,
 			"with_alias": true,
 			"async":      false,
@@ -29,7 +29,7 @@ func (v *Executor) PullZip(id int, objType string) ([]byte, error) {
 		return nil, fmt.Errorf("failed to export process: %w", err)
 	}
 	if response["request_proc"] != "ok" {
-		return nil, fmt.Errorf("failed to export process: %v, %v, %v", response, workspaceID, id)
+		return nil, fmt.Errorf("failed to export process: %v, %v, %v", response, v.WorkspaceID, id)
 	}
 	ops1, ok := response["ops"].([]any)
 	if !ok || len(ops1) == 0 {
@@ -71,7 +71,7 @@ func (v *Executor) PullFolder(id int, objType string) ([]any, error) {
 			"type":       "create",
 			"obj":        "obj_scheme",
 			"obj_id":     id,
-			"company_id": workspaceID,
+			"company_id": v.WorkspaceID,
 			"obj_type":   objType,
 			"with_alias": true,
 			"async":      false,
@@ -130,7 +130,7 @@ func (v *Executor) ExportProcess() (any, error) {
 			"type":       "create",
 			"obj":        "obj_scheme",
 			"obj_id":     v.ProcessID,
-			"company_id": workspaceID,
+			"company_id": v.WorkspaceID,
 			"obj_type":   "conv",
 			"with_alias": true,
 			"async":      false,
@@ -393,7 +393,7 @@ func (v *Executor) GetProcessByID(id int) (rsp map[string]any, err error) {
 			"obj_id":     id,
 			"type":       "list",
 			"obj":        "conv",
-			"company_id": workspaceID,
+			"company_id": v.WorkspaceID,
 		},
 	}
 	if v.Debug {
@@ -422,7 +422,7 @@ func (v *Executor) CreateEmptyProcess(folderID int, title, desc string) int {
 			"title":       title,
 			"description": desc,
 			"folder_id":   folderID,
-			"company_id":  workspaceID,
+			"company_id":  v.WorkspaceID,
 			"obj":         "conv",
 			"create_mode": "without_nodes",
 			"conv_type":   "process",
@@ -462,7 +462,7 @@ func (v *Executor) SetParams(params []interface{}) error {
 			"type":       "modify",
 			"obj":        "conv_params",
 			"params":     params,
-			"company_id": workspaceID,
+			"company_id": v.WorkspaceID,
 		},
 	}
 	if v.Debug {
@@ -515,7 +515,7 @@ func (v *Executor) DeleteVersion(ver int) {
 		{
 			"type":       "delete",
 			"obj":        "commits",
-			"company_id": workspaceID,
+			"company_id": v.WorkspaceID,
 			"conv_id":    v.ProcessID,
 			"version":    ver,
 		},

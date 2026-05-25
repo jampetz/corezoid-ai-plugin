@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -29,7 +30,7 @@ func resetGlobals(t *testing.T) {
 
 func TestHandleToolCall_UnknownTool(t *testing.T) {
 	// Unknown tool hits ensureAuth first when no credentials — still an error.
-	result, isErr := handleToolCall("nonexistent-tool-xyz", map[string]interface{}{})
+	result, isErr := handleToolCall(context.Background(), "nonexistent-tool-xyz", map[string]interface{}{})
 	if !isErr {
 		t.Error("expected isError=true for unknown tool")
 	}
@@ -45,7 +46,7 @@ func TestHandleToolCall_LintProcess_MissingArg(t *testing.T) {
 	os.Chdir(dir) //nolint:errcheck
 	t.Cleanup(func() { os.Chdir(orig) }) //nolint:errcheck
 
-	result, isErr := handleToolCall("lint-process", map[string]interface{}{})
+	result, isErr := handleToolCall(context.Background(), "lint-process", map[string]interface{}{})
 	if !isErr {
 		t.Error("expected isError=true when no .conv.json present")
 	}
@@ -60,7 +61,7 @@ func TestHandleToolCall_LintProcess_ValidFile(t *testing.T) {
 	if _, err := os.Stat(samplePath); err != nil {
 		t.Skip("valid_process.json not found")
 	}
-	result, isErr := handleToolCall("lint-process", map[string]interface{}{
+	result, isErr := handleToolCall(context.Background(), "lint-process", map[string]interface{}{
 		"process_path": samplePath,
 	})
 	if isErr {
@@ -73,7 +74,7 @@ func TestHandleToolCall_LintProcess_ValidFile(t *testing.T) {
 func TestHandleToolCall_PushProcess_MissingFile(t *testing.T) {
 	resetGlobals(t)
 	// Supply a non-existent path with valid filename format.
-	result, isErr := handleToolCall("push-process", map[string]interface{}{
+	result, isErr := handleToolCall(context.Background(), "push-process", map[string]interface{}{
 		"process_path": "/nonexistent/99_process.conv.json",
 	})
 	if !isErr {
@@ -90,7 +91,7 @@ func TestHandleToolCall_PushProcess_BadFilename(t *testing.T) {
 	os.WriteFile(p, []byte(`{"scheme":{"nodes":[]}}`), 0644) //nolint:errcheck
 
 	// Auth check fires before filename validation when credentials are missing.
-	result, isErr := handleToolCall("push-process", map[string]interface{}{
+	result, isErr := handleToolCall(context.Background(), "push-process", map[string]interface{}{
 		"process_path": p,
 	})
 	if !isErr {
@@ -103,7 +104,7 @@ func TestHandleToolCall_PushProcess_BadFilename(t *testing.T) {
 
 func TestHandleToolCall_PullProcess_MissingArg(t *testing.T) {
 	resetGlobals(t)
-	result, isErr := handleToolCall("pull-process", map[string]interface{}{})
+	result, isErr := handleToolCall(context.Background(), "pull-process", map[string]interface{}{})
 	if !isErr {
 		t.Error("expected isError=true when process_id missing")
 	}
@@ -114,7 +115,7 @@ func TestHandleToolCall_PullProcess_MissingArg(t *testing.T) {
 
 func TestHandleToolCall_PullFolder_MissingArg(t *testing.T) {
 	resetGlobals(t)
-	result, isErr := handleToolCall("pull-folder", map[string]interface{}{})
+	result, isErr := handleToolCall(context.Background(), "pull-folder", map[string]interface{}{})
 	if !isErr {
 		t.Error("expected isError=true when folder_id missing")
 	}
@@ -125,7 +126,7 @@ func TestHandleToolCall_PullFolder_MissingArg(t *testing.T) {
 
 func TestHandleToolCall_CreateFolder_MissingArg(t *testing.T) {
 	resetGlobals(t)
-	result, isErr := handleToolCall("create-folder", map[string]interface{}{})
+	result, isErr := handleToolCall(context.Background(), "create-folder", map[string]interface{}{})
 	if !isErr {
 		t.Error("expected isError=true when folder_name missing")
 	}
@@ -135,7 +136,7 @@ func TestHandleToolCall_CreateFolder_MissingArg(t *testing.T) {
 func TestHandleToolCall_CreateFolder_NoFolderFile(t *testing.T) {
 	resetGlobals(t)
 	dir := t.TempDir()
-	result, isErr := handleToolCall("create-folder", map[string]interface{}{
+	result, isErr := handleToolCall(context.Background(), "create-folder", map[string]interface{}{
 		"parent_path": dir,
 		"folder_name": "test",
 	})
@@ -150,7 +151,7 @@ func TestHandleToolCall_CreateFolder_NoFolderFile(t *testing.T) {
 func TestHandleToolCall_CreateProcess_NoFolderFile(t *testing.T) {
 	resetGlobals(t)
 	dir := t.TempDir()
-	result, isErr := handleToolCall("create-process", map[string]interface{}{
+	result, isErr := handleToolCall(context.Background(), "create-process", map[string]interface{}{
 		"folder_path":  dir,
 		"process_name": "test-process",
 	})
@@ -164,7 +165,7 @@ func TestHandleToolCall_CreateProcess_NoFolderFile(t *testing.T) {
 
 func TestHandleToolCall_CreateVariable_MissingArg(t *testing.T) {
 	resetGlobals(t)
-	result, isErr := handleToolCall("create-variable", map[string]interface{}{})
+	result, isErr := handleToolCall(context.Background(), "create-variable", map[string]interface{}{})
 	if !isErr {
 		t.Error("expected isError=true when stage_id missing")
 	}
@@ -179,7 +180,7 @@ func TestHandleToolCall_CreateAlias_NoStageID(t *testing.T) {
 	p := filepath.Join(dir, "123_proc.conv.json")
 	os.WriteFile(p, []byte(`{}`), 0644) //nolint:errcheck
 
-	result, isErr := handleToolCall("create-alias", map[string]interface{}{
+	result, isErr := handleToolCall(context.Background(), "create-alias", map[string]interface{}{
 		"process_path": p,
 		"short_name":   "my-alias",
 	})
@@ -195,7 +196,7 @@ func TestHandleToolCall_CreateAlias_BadFilename(t *testing.T) {
 	p := filepath.Join(dir, "noprefix.conv.json")
 	os.WriteFile(p, []byte(`{}`), 0644) //nolint:errcheck
 
-	result, isErr := handleToolCall("create-alias", map[string]interface{}{
+	result, isErr := handleToolCall(context.Background(), "create-alias", map[string]interface{}{
 		"process_path": p,
 		"short_name":   "alias",
 	})
@@ -209,7 +210,7 @@ func TestHandleToolCall_CreateAlias_BadFilename(t *testing.T) {
 
 func TestHandleToolCall_ModifyTask_MissingProcessID(t *testing.T) {
 	resetGlobals(t)
-	result, isErr := handleToolCall("modify-task", map[string]interface{}{
+	result, isErr := handleToolCall(context.Background(), "modify-task", map[string]interface{}{
 		"data": `{}`,
 	})
 	if !isErr {
@@ -220,7 +221,7 @@ func TestHandleToolCall_ModifyTask_MissingProcessID(t *testing.T) {
 
 func TestHandleToolCall_ModifyTask_MissingRefAndTaskID(t *testing.T) {
 	resetGlobals(t)
-	result, isErr := handleToolCall("modify-task", map[string]interface{}{
+	result, isErr := handleToolCall(context.Background(), "modify-task", map[string]interface{}{
 		"process_id": float64(123),
 		"data":       `{}`,
 	})
@@ -232,7 +233,7 @@ func TestHandleToolCall_ModifyTask_MissingRefAndTaskID(t *testing.T) {
 
 func TestHandleToolCall_ModifyTask_BadDataJSON(t *testing.T) {
 	resetGlobals(t)
-	result, isErr := handleToolCall("modify-task", map[string]interface{}{
+	result, isErr := handleToolCall(context.Background(), "modify-task", map[string]interface{}{
 		"process_id": float64(123),
 		"task_id":    "abc",
 		"data":       `not-json`,
@@ -245,7 +246,7 @@ func TestHandleToolCall_ModifyTask_BadDataJSON(t *testing.T) {
 
 func TestHandleToolCall_DeleteTask_MissingRefAndTaskID(t *testing.T) {
 	resetGlobals(t)
-	result, isErr := handleToolCall("delete-task", map[string]interface{}{
+	result, isErr := handleToolCall(context.Background(), "delete-task", map[string]interface{}{
 		"process_id": float64(123),
 	})
 	if !isErr {
@@ -258,7 +259,7 @@ func TestHandleToolCall_DeleteTask_MissingRefAndTaskID(t *testing.T) {
 
 func TestHandleToolCall_ListTaskHistory_MissingArg(t *testing.T) {
 	resetGlobals(t)
-	result, isErr := handleToolCall("list-task-history", map[string]interface{}{})
+	result, isErr := handleToolCall(context.Background(), "list-task-history", map[string]interface{}{})
 	if !isErr {
 		t.Error("expected isError=true when process_id missing")
 	}
@@ -267,7 +268,7 @@ func TestHandleToolCall_ListTaskHistory_MissingArg(t *testing.T) {
 
 func TestHandleToolCall_ListNodeTasks_MissingArg(t *testing.T) {
 	resetGlobals(t)
-	result, isErr := handleToolCall("list-node-tasks", map[string]interface{}{})
+	result, isErr := handleToolCall(context.Background(), "list-node-tasks", map[string]interface{}{})
 	if !isErr {
 		t.Error("expected isError=true when process_id missing")
 	}
@@ -278,7 +279,7 @@ func TestHandleToolCall_ListNodeTasks_MissingArg(t *testing.T) {
 
 func TestHandleToolCall_AddChart_MissingArg(t *testing.T) {
 	resetGlobals(t)
-	result, isErr := handleToolCall("add-chart", map[string]interface{}{})
+	result, isErr := handleToolCall(context.Background(), "add-chart", map[string]interface{}{})
 	if !isErr {
 		t.Error("expected isError=true when args missing")
 	}
@@ -287,7 +288,7 @@ func TestHandleToolCall_AddChart_MissingArg(t *testing.T) {
 
 func TestHandleToolCall_AddChart_BadSeriesJSON(t *testing.T) {
 	resetGlobals(t)
-	result, isErr := handleToolCall("add-chart", map[string]interface{}{
+	result, isErr := handleToolCall(context.Background(), "add-chart", map[string]interface{}{
 		"dashboard_id": float64(1),
 		"name":         "chart",
 		"chart_type":   "line",
@@ -301,7 +302,7 @@ func TestHandleToolCall_AddChart_BadSeriesJSON(t *testing.T) {
 
 func TestHandleToolCall_ModifyChart_MissingArg(t *testing.T) {
 	resetGlobals(t)
-	result, isErr := handleToolCall("modify-chart", map[string]interface{}{})
+	result, isErr := handleToolCall(context.Background(), "modify-chart", map[string]interface{}{})
 	if !isErr {
 		t.Error("expected isError=true when args missing")
 	}
@@ -310,7 +311,7 @@ func TestHandleToolCall_ModifyChart_MissingArg(t *testing.T) {
 
 func TestHandleToolCall_GetChart_MissingArg(t *testing.T) {
 	resetGlobals(t)
-	result, isErr := handleToolCall("get-chart", map[string]interface{}{})
+	result, isErr := handleToolCall(context.Background(), "get-chart", map[string]interface{}{})
 	if !isErr {
 		t.Error("expected isError=true when args missing")
 	}
@@ -321,7 +322,7 @@ func TestHandleToolCall_GetChart_MissingArg(t *testing.T) {
 
 func TestHandleToolCall_SetDashboardLayout_MissingArg(t *testing.T) {
 	resetGlobals(t)
-	result, isErr := handleToolCall("set-dashboard-layout", map[string]interface{}{})
+	result, isErr := handleToolCall(context.Background(), "set-dashboard-layout", map[string]interface{}{})
 	if !isErr {
 		t.Error("expected isError=true when args missing")
 	}
@@ -330,7 +331,7 @@ func TestHandleToolCall_SetDashboardLayout_MissingArg(t *testing.T) {
 
 func TestHandleToolCall_SetDashboardLayout_BadGrid(t *testing.T) {
 	resetGlobals(t)
-	result, isErr := handleToolCall("set-dashboard-layout", map[string]interface{}{
+	result, isErr := handleToolCall(context.Background(), "set-dashboard-layout", map[string]interface{}{
 		"dashboard_id": float64(1),
 		"grid":         "not-json",
 	})
@@ -342,7 +343,7 @@ func TestHandleToolCall_SetDashboardLayout_BadGrid(t *testing.T) {
 
 func TestHandleToolCall_SetDashboardLayout_MissingChartID(t *testing.T) {
 	resetGlobals(t)
-	result, isErr := handleToolCall("set-dashboard-layout", map[string]interface{}{
+	result, isErr := handleToolCall(context.Background(), "set-dashboard-layout", map[string]interface{}{
 		"dashboard_id": float64(1),
 		"grid":         `[{"x":0,"y":0,"width":1,"height":1}]`,
 	})
@@ -357,7 +358,7 @@ func TestHandleToolCall_SetDashboardLayout_MissingChartID(t *testing.T) {
 func TestHandleToolCall_ListProjects_MissingArg(t *testing.T) {
 	resetGlobals(t)
 	// Missing company_id.
-	result, isErr := handleToolCall("list-projects", map[string]interface{}{})
+	result, isErr := handleToolCall(context.Background(), "list-projects", map[string]interface{}{})
 	if !isErr {
 		t.Error("expected isError=true when company_id missing")
 	}
@@ -366,7 +367,7 @@ func TestHandleToolCall_ListProjects_MissingArg(t *testing.T) {
 
 func TestHandleToolCall_ListStages_MissingArg(t *testing.T) {
 	resetGlobals(t)
-	result, isErr := handleToolCall("list-stages", map[string]interface{}{})
+	result, isErr := handleToolCall(context.Background(), "list-stages", map[string]interface{}{})
 	if !isErr {
 		t.Error("expected isError=true when project_id missing")
 	}
@@ -381,7 +382,7 @@ func TestHandleToolCall_RunTask_BadFilename(t *testing.T) {
 	p := filepath.Join(dir, "noid.conv.json")
 	os.WriteFile(p, []byte(`{}`), 0644) //nolint:errcheck
 
-	result, isErr := handleToolCall("run-task", map[string]interface{}{
+	result, isErr := handleToolCall(context.Background(), "run-task", map[string]interface{}{
 		"process_path": p,
 		"data":         `{}`,
 	})
@@ -397,7 +398,7 @@ func TestHandleToolCall_RunTask_MissingData(t *testing.T) {
 	p := filepath.Join(dir, "123_proc.conv.json")
 	os.WriteFile(p, []byte(`{}`), 0644) //nolint:errcheck
 
-	result, isErr := handleToolCall("run-task", map[string]interface{}{
+	result, isErr := handleToolCall(context.Background(), "run-task", map[string]interface{}{
 		"process_path": p,
 	})
 	if !isErr {
@@ -410,7 +411,7 @@ func TestHandleToolCall_RunTask_MissingData(t *testing.T) {
 
 func TestHandleToolCall_GetDashboard_MissingArg(t *testing.T) {
 	resetGlobals(t)
-	result, isErr := handleToolCall("get-dashboard", map[string]interface{}{})
+	result, isErr := handleToolCall(context.Background(), "get-dashboard", map[string]interface{}{})
 	if !isErr {
 		t.Error("expected isError=true when args missing")
 	}
@@ -421,7 +422,7 @@ func TestHandleToolCall_GetDashboard_MissingArg(t *testing.T) {
 
 func TestHandleToolCall_CreateDashboard_MissingArg(t *testing.T) {
 	resetGlobals(t)
-	result, isErr := handleToolCall("create-dashboard", map[string]interface{}{})
+	result, isErr := handleToolCall(context.Background(), "create-dashboard", map[string]interface{}{})
 	if !isErr {
 		t.Error("expected isError=true when title missing")
 	}

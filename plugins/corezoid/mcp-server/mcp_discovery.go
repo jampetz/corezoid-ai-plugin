@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 )
 
@@ -26,8 +27,8 @@ type stageItem struct {
 
 // fetchWorkspaceList calls the Corezoid API and returns the list of workspaces
 // available to the authenticated user. Requires apiURL and apiToken to be set.
-func fetchWorkspaceList() ([]wsItem, error) {
-	v := NewValidator(0)
+func fetchWorkspaceList(ctx context.Context) ([]wsItem, error) {
+	v := NewValidator(ctx, 0)
 	ops := []map[string]any{{"type": "list", "obj": "company"}}
 	resp, err := v.req("list_workspaces", ops)
 	if err != nil {
@@ -62,8 +63,8 @@ func fetchWorkspaceList() ([]wsItem, error) {
 }
 
 // fetchProjectList calls the Corezoid API and returns the projects in a workspace.
-func fetchProjectList(companyID string) ([]projectItem, error) {
-	v := NewValidator(0)
+func fetchProjectList(ctx context.Context, companyID string) ([]projectItem, error) {
+	v := NewValidator(ctx, 0)
 	ops := []map[string]any{
 		{"type": "list", "obj": "projects", "obj_id": 0, "id": companyID, "company_id": companyID, "sort": "title"},
 	}
@@ -100,8 +101,8 @@ func fetchProjectList(companyID string) ([]projectItem, error) {
 }
 
 // fetchStageList calls the Corezoid API and returns the stages (folders) in a project.
-func fetchStageList(companyID string, projectID int64) ([]stageItem, error) {
-	v := NewValidator(0)
+func fetchStageList(ctx context.Context, companyID string, projectID int64) ([]stageItem, error) {
+	v := NewValidator(ctx, 0)
 	ops := []map[string]any{
 		{"type": "list", "obj": "project", "obj_id": projectID, "id": companyID, "company_id": companyID, "sort": "date", "order": "asc"},
 	}
@@ -138,15 +139,25 @@ func fetchStageList(companyID string, projectID int64) ([]stageItem, error) {
 	return result, nil
 }
 
-// ensureTokenAuth checks that a valid API token is present.
+// ensureTokenAuth checks that a valid API token is present. If apiToken is
+// empty it attempts to load saved OAuth credentials; the check-then-load-then-set
+// runs under the auth write lock so concurrent requests can't double-load or
+// race the read against the write.
 func ensureTokenAuth() error {
-	if apiToken == "" {
+	_, snapToken, _, _, _ := authSnapshot()
+	if snapToken == "" {
 		creds, err := loadCredentials()
 		if err == nil && creds != nil && !isCredentialsExpired(creds) {
-			apiToken = creds.AccessToken
+			loaded := creds.AccessToken
+			withAuthLock(func() {
+				if apiToken == "" {
+					apiToken = loaded
+				}
+			})
+			snapToken = loaded
 		}
 	}
-	if apiToken == "" {
+	if snapToken == "" {
 		return fmt.Errorf("[Error] Not authenticated: missing [ACCESS_TOKEN]. Invoke the 'corezoid-init' skill to set up credentials (use the Skill tool with skill=\"corezoid-init\").")
 	}
 	return nil
@@ -159,13 +170,14 @@ func ensureAuth() error {
 		return err
 	}
 
+	_, _, _, snapAccountURL, snapStageID := authSnapshot()
 	var missing []string
-	if accountURL == "" {
+	if snapAccountURL == "" {
 		missing = append(missing, "ACCOUNT_URL")
 	}
 	// WORKSPACE_ID is optional: personal-workspace accounts have no companyID.
 	// `Executor.req` strips the empty placeholder from outbound ops in that case.
-	if stageID == 0 {
+	if snapStageID == 0 {
 		missing = append(missing, "COREZOID_STAGE_ID")
 	}
 

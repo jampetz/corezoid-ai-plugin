@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -21,6 +22,18 @@ var schemaFS embed.FS
 
 // Global logger instance
 var logger = &Logger{}
+
+// authStateMu guards the mutable auth-state globals below. Reads happen on
+// many goroutines (one per MCP request in HTTP mode, plus tool-call goroutines
+// in stdio mode); writes happen during login/logout, credential loading at
+// startup, and the env-default block at the top of each handler. Without the
+// mutex the race detector flags every concurrent access — and HTTP mode
+// genuinely races because net/http dispatches handlers concurrently.
+//
+// Read paths take RLock (see authSnapshot). Write paths take Lock. Long-running
+// operations (OAuth, elicitation, API calls) must NOT be performed while
+// holding the lock; snapshot or release first.
+var authStateMu sync.RWMutex
 var apiURL string
 var accountURL string
 var apiToken string
@@ -29,6 +42,25 @@ var debug bool
 var apigwURL string
 var stageID int
 var insecureTLS bool
+
+// authSnapshot returns a coherent snapshot of the auth-state globals taken
+// under the read lock. Callers that subsequently need to mutate state must
+// acquire authStateMu.Lock() (not upgrade — Go's RWMutex doesn't support that).
+func authSnapshot() (apiURLv, tokenv, workspaceIDv, accountURLv string, stageIDv int) {
+	authStateMu.RLock()
+	defer authStateMu.RUnlock()
+	return apiURL, apiToken, workspaceID, accountURL, stageID
+}
+
+// withAuthLock runs fn while holding the auth-state write lock. Use for
+// composite read-then-write operations (e.g. "set X only if empty") that must
+// be atomic with respect to other readers and writers. fn must not perform
+// long-running I/O — that would block every concurrent request.
+func withAuthLock(fn func()) {
+	authStateMu.Lock()
+	defer authStateMu.Unlock()
+	fn()
+}
 
 func loadDotEnv(filename string) {
 	data, err := os.ReadFile(filename)
@@ -130,7 +162,10 @@ func runCLI(toolName string, rawArgs []string) {
 	if _, ok := args["folder_id"]; !ok && stageID != 0 {
 		args["folder_id"] = stageID
 	}
-	result, isError := handleToolCall(toolName, args)
+	// CLI mode runs to completion or until the user kills the process; we
+	// don't have a richer cancellation source than the process itself, so
+	// context.Background() is fine here.
+	result, isError := handleToolCall(context.Background(), toolName, args)
 	if isError {
 		fmt.Fprintln(os.Stderr, result)
 		os.Exit(1)

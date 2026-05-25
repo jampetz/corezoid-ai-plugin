@@ -71,7 +71,7 @@ func (v *Executor) CreateFolder(parentFolderID int, title, desc string) (int, er
 			"title":       title,
 			"description": desc,
 			"folder_id":   parentFolderID,
-			"company_id":  workspaceID,
+			"company_id":  v.WorkspaceID,
 			"obj":         "folder",
 			"type":        "create",
 		},
@@ -112,14 +112,14 @@ func (v *Executor) resolveFolderPathFromAPI(folderID int) (string, error) {
 	var segments []segment
 	currentID := folderID
 	for i := 0; i < maxDepth; i++ {
-		if stageID != 0 && currentID == stageID {
+		if v.StageID != 0 && currentID == v.StageID {
 			break
 		}
 		info, err := v.ShowFolder(currentID)
 		if err != nil {
 			return "", fmt.Errorf("failed to resolve folder path at id %d: %w", currentID, err)
 		}
-		if info.ObjType == 3 || (stageID != 0 && info.ObjID == stageID) {
+		if info.ObjType == 3 || (v.StageID != 0 && info.ObjID == v.StageID) {
 			break
 		}
 		safeName := strings.ReplaceAll(info.Title, " ", "_")
@@ -148,7 +148,7 @@ func (v *Executor) CreateVariable(rootFolderIDBin, name, description, value stri
 			"data_type":    "raw",
 			"title":        description,
 			"short_name":   name,
-			"company_id":   workspaceID,
+			"company_id":   v.WorkspaceID,
 			"stage_id":     rootFolderID,
 			"project_id":   v.GetProjectIDByStageID(rootFolderID),
 			"env_var_type": "visible",
@@ -237,7 +237,7 @@ func (v *Executor) CreateAlias(shortName string, procID, stageID int) (int, erro
 			"obj":         "alias",
 			"title":       shortName,
 			"short_name":  shortName,
-			"company_id":  workspaceID,
+			"company_id":  v.WorkspaceID,
 			"stage_id":    stageID,
 			"project_id":  projectID,
 			"obj_to_id":   procID,
@@ -275,7 +275,7 @@ func (v *Executor) listAliasesByStage(stage int) (map[string]int, error) {
 		{
 			"type":       "list",
 			"obj":        "aliases",
-			"company_id": workspaceID,
+			"company_id": v.WorkspaceID,
 			"stage_id":   stage,
 			"project_id": projectID,
 		},
@@ -312,7 +312,7 @@ func (v *Executor) listAliasesByStage(stage int) (map[string]int, error) {
 
 // GetAliasByShortName checks if an alias with the given short_name exists.
 func (v *Executor) GetAliasByShortName(shortName string) (int, error) {
-	aliases, err := v.listAliasesByStage(stageID)
+	aliases, err := v.listAliasesByStage(v.StageID)
 	if err != nil {
 		return 0, fmt.Errorf("alias '%s' does not exist: %v", shortName, err)
 	}
@@ -329,7 +329,7 @@ func (v *Executor) listEnvVarsByStage(stage int) (map[string]int, error) {
 		{
 			"type":       "list",
 			"obj":        "env_var",
-			"company_id": workspaceID,
+			"company_id": v.WorkspaceID,
 			"stage_id":   stage,
 			"project_id": projectID,
 		},
@@ -366,7 +366,7 @@ func (v *Executor) listEnvVarsByStage(stage int) (map[string]int, error) {
 
 // GetEnvVarByShortName checks if an environment variable with the given short_name exists.
 func (v *Executor) GetEnvVarByShortName(shortName string) (int, error) {
-	vars, err := v.listEnvVarsByStage(stageID)
+	vars, err := v.listEnvVarsByStage(v.StageID)
 	if err != nil {
 		return 0, fmt.Errorf("env variable '@%s' does not exist: %v", shortName, err)
 	}

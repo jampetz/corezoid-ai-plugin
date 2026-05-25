@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math/rand"
@@ -12,7 +13,14 @@ import (
 	"time"
 )
 
-func handleToolCall(name string, args map[string]interface{}) (result string, isError bool) {
+// handleToolCall dispatches an MCP tool invocation. ctx must be non-nil — it
+// flows down through the Executor into every HTTP request, so callers can
+// cancel a long-running tool (e.g. pull-folder on a large workspace) via the
+// MCP notifications/cancelled message or an HTTP server timeout.
+func handleToolCall(ctx context.Context, name string, args map[string]interface{}) (result string, isError bool) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	// lint works on local files only; login/logout manage auth — skip auth check for these.
 	// Discovery tools only need a token, not a fully configured workspace/stage.
 	switch name {
@@ -34,56 +42,66 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 
 		// Re-read .env so that ACCESS_TOKEN (and other vars) added after server
 		// startup are honoured — prevents triggering OAuth when the token is
-		// already present in .env.
+		// already present in .env. The env-reload + arg-application block is a
+		// composite check-then-set on shared state, so do it under the auth
+		// write lock to keep concurrent readers consistent.
 		findAndLoadDotEnv()
-		if apiToken == "" {
-			apiToken = os.Getenv("ACCESS_TOKEN")
-		}
-		if accountURL == "" {
-			accountURL = os.Getenv("ACCOUNT_URL")
-		}
-		if workspaceID == "" {
-			workspaceID = os.Getenv("WORKSPACE_ID")
-		}
-		if stageID == 0 {
-			stageID, _ = strconv.Atoi(os.Getenv("COREZOID_STAGE_ID"))
-		}
-		if apiURL == "" {
-			apiURL = os.Getenv("COREZOID_API_URL")
-		}
-
-		// Record initial stageID to detect if it gets set during this call.
-		stageIDAtStart := stageID
-
-		// Apply any values passed directly as arguments (bypasses elicitation).
-		if v := optStrArg(args, "account_url"); v != "" && accountURL == "" {
-			accountURL = v
-			os.Setenv("ACCOUNT_URL", v)
-			if err := updateEnvFile(envPath, "ACCOUNT_URL", v); err != nil {
-				logger.Warn("login: could not save ACCOUNT_URL from arg: %v", err)
+		var stageIDAtStart int
+		withAuthLock(func() {
+			if apiToken == "" {
+				apiToken = os.Getenv("ACCESS_TOKEN")
 			}
-		}
-		if v := optStrArg(args, "workspace_id"); v != "" && workspaceID == "" {
-			workspaceID = v
-			os.Setenv("WORKSPACE_ID", v)
-			if err := updateEnvFile(envPath, "WORKSPACE_ID", v); err != nil {
-				logger.Warn("login: could not save WORKSPACE_ID from arg: %v", err)
+			if accountURL == "" {
+				accountURL = os.Getenv("ACCOUNT_URL")
 			}
-		}
-		if v := optStrArg(args, "stage_id"); v != "" && stageID == 0 {
-			if id, err := strconv.Atoi(v); err == nil && id != 0 {
-				stageID = id
-				os.Setenv("COREZOID_STAGE_ID", v)
-				if err := updateEnvFile(envPath, "COREZOID_STAGE_ID", v); err != nil {
-					logger.Warn("login: could not save COREZOID_STAGE_ID from arg: %v", err)
+			if workspaceID == "" {
+				workspaceID = os.Getenv("WORKSPACE_ID")
+			}
+			if stageID == 0 {
+				stageID, _ = strconv.Atoi(os.Getenv("COREZOID_STAGE_ID"))
+			}
+			if apiURL == "" {
+				apiURL = os.Getenv("COREZOID_API_URL")
+			}
+
+			// Record initial stageID to detect if it gets set during this call.
+			stageIDAtStart = stageID
+
+			// Apply any values passed directly as arguments (bypasses elicitation).
+			if v := optStrArg(args, "account_url"); v != "" && accountURL == "" {
+				accountURL = v
+				os.Setenv("ACCOUNT_URL", v)
+				if err := updateEnvFile(envPath, "ACCOUNT_URL", v); err != nil {
+					logger.Warn("login: could not save ACCOUNT_URL from arg: %v", err)
 				}
 			}
-		}
+			if v := optStrArg(args, "workspace_id"); v != "" && workspaceID == "" {
+				workspaceID = v
+				os.Setenv("WORKSPACE_ID", v)
+				if err := updateEnvFile(envPath, "WORKSPACE_ID", v); err != nil {
+					logger.Warn("login: could not save WORKSPACE_ID from arg: %v", err)
+				}
+			}
+			if v := optStrArg(args, "stage_id"); v != "" && stageID == 0 {
+				if id, err := strconv.Atoi(v); err == nil && id != 0 {
+					stageID = id
+					os.Setenv("COREZOID_STAGE_ID", v)
+					if err := updateEnvFile(envPath, "COREZOID_STAGE_ID", v); err != nil {
+						logger.Warn("login: could not save COREZOID_STAGE_ID from arg: %v", err)
+					}
+				}
+			}
+		})
 
-		logger.Info("login: accountURL=%q workspaceID=%q stageID=%d", accountURL, workspaceID, stageID)
+		// Snapshot the post-reload state for use in this handler — long-running
+		// OAuth / elicitation must not hold the auth lock, so we drive most
+		// logic from these locals and only re-acquire the lock for writes.
+		_, snapToken, snapWorkspaceID, snapAccountURL, snapStageID := authSnapshot()
+		logger.Info("login: accountURL=%q workspaceID=%q stageID=%d", snapAccountURL, snapWorkspaceID, snapStageID)
 
 		// Step 1: ensure Account API URL.
-		if accountURL == "" {
+		if snapAccountURL == "" {
+			var resolved string
 			if clientSupportsElicitation {
 				content, action, err := elicitValues(
 					"Enter your Account API URL to get started:",
@@ -102,30 +120,32 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 				)
 				if err != nil {
 					logger.Warn("login: elicitation error for ACCOUNT_URL: %v — using default", err)
-					accountURL = "https://account.corezoid.com"
+					resolved = "https://account.corezoid.com"
 				} else if action != "accept" {
 					logger.Info("login: user cancelled ACCOUNT_URL elicitation (action=%q)", action)
 					return "Please ask the user for their Corezoid Account URL (e.g. https://account.corezoid.com), then call the login tool again with account_url=<value>.", false
 				} else {
 					if v, _ := content["account_url"].(string); v != "" {
-						accountURL = v
+						resolved = v
 					} else {
-						accountURL = "https://account.corezoid.com"
+						resolved = "https://account.corezoid.com"
 					}
 				}
 			} else {
 				return "Please ask the user for their Corezoid Account URL (e.g. https://account.corezoid.com), then call the login tool again with account_url=<value>.", false
 			}
-			os.Setenv("ACCOUNT_URL", accountURL)
-			if err := updateEnvFile(envPath, "ACCOUNT_URL", accountURL); err != nil {
+			snapAccountURL = resolved
+			withAuthLock(func() { accountURL = resolved })
+			os.Setenv("ACCOUNT_URL", resolved)
+			if err := updateEnvFile(envPath, "ACCOUNT_URL", resolved); err != nil {
 				logger.Warn("login: could not save ACCOUNT_URL: %v", err)
 			}
 		}
 
 		// Step 2: OAuth2 PKCE browser flow (skipped if already authenticated).
 		var tokenExpiry time.Time
-		if apiToken == "" {
-			res, err := oauthPKCEFlow(accountURL, oauthClientID)
+		if snapToken == "" {
+			res, err := oauthPKCEFlow(snapAccountURL, oauthClientID)
 			if err != nil {
 				return fmt.Sprintf("Authentication failed: %v", err), true
 			}
@@ -137,16 +157,20 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 			if saveErr := saveCredentials(creds); saveErr != nil {
 				logger.Warn("login: failed to save credentials: %v", saveErr)
 			}
-			apiToken = res.AccessToken
+			snapToken = res.AccessToken
 			tokenExpiry = res.ExpiresAt
+			withAuthLock(func() { apiToken = res.AccessToken })
 
 			// Step 2.5: derive COREZOID_API_URL from the account clients endpoint.
-			if apiURL == "" {
-				corezoidURL, fetchErr := fetchCorezoidAPIURL(accountURL, res.AccessToken)
+			authStateMu.RLock()
+			apiURLEmpty := apiURL == ""
+			authStateMu.RUnlock()
+			if apiURLEmpty {
+				corezoidURL, fetchErr := fetchCorezoidAPIURL(snapAccountURL, res.AccessToken)
 				if fetchErr != nil {
 					logger.Warn("login: fetchCorezoidAPIURL failed: %v", fetchErr)
 				} else {
-					apiURL = corezoidURL
+					withAuthLock(func() { apiURL = corezoidURL })
 					os.Setenv("COREZOID_API_URL", corezoidURL)
 					if err := updateEnvFile(envPath, "COREZOID_API_URL", corezoidURL); err != nil {
 						logger.Warn("login: could not save COREZOID_API_URL: %v", err)
@@ -157,9 +181,9 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 		}
 
 		// Step 3: workspace selection.
-		if workspaceID == "" {
+		if snapWorkspaceID == "" {
 			if clientSupportsElicitation {
-				workspaces, fetchErr := fetchWorkspaceList()
+				workspaces, fetchErr := fetchWorkspaceList(ctx)
 				if fetchErr != nil {
 					logger.Warn("login: fetchWorkspaceList failed: %v — falling back to text input", fetchErr)
 				}
@@ -205,7 +229,8 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 						if raw, ok := wsIDByLabel[selected]; ok {
 							id = raw
 						}
-						workspaceID = id
+						snapWorkspaceID = id
+						withAuthLock(func() { workspaceID = id })
 						os.Setenv("WORKSPACE_ID", id)
 						if err := updateEnvFile(envPath, "WORKSPACE_ID", id); err != nil {
 							logger.Warn("login: could not save WORKSPACE_ID: %v", err)
@@ -214,7 +239,7 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 				}
 			} else {
 				// No elicitation — fetch workspace list and return it to the LLM.
-				workspaces, fetchErr := fetchWorkspaceList()
+				workspaces, fetchErr := fetchWorkspaceList(ctx)
 				var sb strings.Builder
 				sb.WriteString("Authenticated successfully.\n\nAvailable workspaces:\n")
 				if fetchErr != nil {
@@ -235,12 +260,12 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 		}
 
 		// Steps 4 & 5: pick project then stage.
-		if stageID == 0 {
+		if snapStageID == 0 {
 			if clientSupportsElicitation {
 				var selectedProjectID int64
 
 				// Step 4: fetch project list and elicit selection.
-				projects, projErr := fetchProjectList(workspaceID)
+				projects, projErr := fetchProjectList(ctx, snapWorkspaceID)
 				if projErr != nil {
 					logger.Warn("login: fetchProjectList failed: %v", projErr)
 				}
@@ -280,7 +305,7 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 
 				// Step 5: fetch stage list for selected project and elicit selection.
 				if selectedProjectID != 0 {
-					stages, stagesErr := fetchStageList(workspaceID, selectedProjectID)
+					stages, stagesErr := fetchStageList(ctx, snapWorkspaceID, selectedProjectID)
 					if stagesErr != nil {
 						logger.Warn("login: fetchStageList failed: %v", stagesErr)
 					}
@@ -317,10 +342,11 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 						if err == nil && action == "accept" {
 							if selected, _ := content["stage"].(string); selected != "" {
 								if id, ok := stageIDByLabel[selected]; ok && id != 0 {
-									stageID = int(id)
-									v := strconv.FormatInt(id, 10)
-									os.Setenv("COREZOID_STAGE_ID", v)
-									if err := updateEnvFile(envPath, "COREZOID_STAGE_ID", v); err != nil {
+									snapStageID = int(id)
+									withAuthLock(func() { stageID = int(id) })
+									vstr := strconv.FormatInt(id, 10)
+									os.Setenv("COREZOID_STAGE_ID", vstr)
+									if err := updateEnvFile(envPath, "COREZOID_STAGE_ID", vstr); err != nil {
 										logger.Warn("login: could not save COREZOID_STAGE_ID: %v", err)
 									}
 								}
@@ -330,7 +356,7 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 				}
 
 				// Fallback: if stage still not set, ask for stage ID directly.
-				if stageID == 0 {
+				if snapStageID == 0 {
 					content, action, err := elicitValues(
 						"Enter your Stage ID (root folder ID for this project):",
 						map[string]interface{}{
@@ -348,7 +374,8 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 					if err == nil && action == "accept" {
 						if v, _ := content["stage_id"].(string); v != "" {
 							if id, err := strconv.Atoi(v); err == nil && id != 0 {
-								stageID = id
+								snapStageID = id
+								withAuthLock(func() { stageID = id })
 								os.Setenv("COREZOID_STAGE_ID", v)
 								if err := updateEnvFile(envPath, "COREZOID_STAGE_ID", v); err != nil {
 									logger.Warn("login: could not save COREZOID_STAGE_ID: %v", err)
@@ -359,16 +386,16 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 				}
 			} else {
 				// No elicitation — list projects so LLM can collect stage from user.
-				projects, projErr := fetchProjectList(workspaceID)
+				projects, projErr := fetchProjectList(ctx, snapWorkspaceID)
 				var sb strings.Builder
-				sb.WriteString(fmt.Sprintf("Workspace %s selected.\n\n", workspaceID))
+				sb.WriteString(fmt.Sprintf("Workspace %s selected.\n\n", snapWorkspaceID))
 				if projErr != nil || len(projects) == 0 {
 					if projErr != nil {
 						sb.WriteString(fmt.Sprintf("Could not fetch projects: %v\n", projErr))
 					} else {
 						sb.WriteString("No projects found.\n")
 					}
-					sb.WriteString(fmt.Sprintf("Please ask the user for their COREZOID_STAGE_ID (root folder ID), then call login(workspace_id=%s, stage_id=<stage_id>).", workspaceID))
+					sb.WriteString(fmt.Sprintf("Please ask the user for their COREZOID_STAGE_ID (root folder ID), then call login(workspace_id=%s, stage_id=<stage_id>).", snapWorkspaceID))
 				} else {
 					sb.WriteString("Available projects:\n")
 					for _, p := range projects {
@@ -378,16 +405,16 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 						}
 						sb.WriteString(line + "\n")
 					}
-					sb.WriteString(fmt.Sprintf("\nPlease ask the user which project to use. Call list-stages(project_id=<id>, company_id=%s) to see available stages, then ask the user to pick one and call login(workspace_id=%s, stage_id=<stage_id>).", workspaceID, workspaceID))
+					sb.WriteString(fmt.Sprintf("\nPlease ask the user which project to use. Call list-stages(project_id=<id>, company_id=%s) to see available stages, then ask the user to pick one and call login(workspace_id=%s, stage_id=<stage_id>).", snapWorkspaceID, snapWorkspaceID))
 				}
 				return sb.String(), false
 			}
 		}
 
 		// Auto pull-folder if stageID was set during this login call.
-		if stageID != 0 && stageIDAtStart == 0 {
-			pv := NewValidator(0)
-			if pullErr := downloadStageRecursively(pv, stageID, "."); pullErr != nil {
+		if snapStageID != 0 && stageIDAtStart == 0 {
+			pv := NewValidator(ctx, 0)
+			if pullErr := downloadStageRecursively(pv, snapStageID, "."); pullErr != nil {
 				logger.Warn("login: auto pull-folder failed: %v", pullErr)
 			}
 		}
@@ -402,7 +429,7 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 		if err := deleteCredentials(); err != nil {
 			return fmt.Sprintf("Failed to remove credentials: %v", err), true
 		}
-		apiToken = ""
+		withAuthLock(func() { apiToken = "" })
 		return fmt.Sprintf("Logged out. ACCESS_TOKEN removed from %s.", envFilePath()), false
 
 	case "pull-process":
@@ -410,7 +437,7 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 		if err != nil {
 			return "Error: " + err.Error(), true
 		}
-		v := NewValidator(processID)
+		v := NewValidator(ctx, processID)
 		procInfo1, err := v.ExportProcess()
 		if err != nil {
 			return fmt.Sprintf("Error fetching process: %v", err), true
@@ -442,7 +469,7 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 			if pid, ok := m["parent_id"].(float64); ok {
 				parentID = int(pid)
 			}
-			if parentID != 0 && stageID != 0 {
+			if parentID != 0 && v.StageID != 0 {
 				resolved, resolveErr := v.resolveFolderPathFromAPI(parentID)
 				if resolveErr != nil {
 					logger.Warn("pull-process: could not resolve folder path for parent_id %d: %v", parentID, resolveErr)
@@ -470,7 +497,7 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 			return "Error: " + err.Error(), true
 		}
 
-		v := NewValidator(0)
+		v := NewValidator(ctx, 0)
 		if err := downloadStageRecursively(v, folderID, "."); err != nil {
 			return fmt.Sprintf("Error fetching folder: %v", err), true
 		}
@@ -494,7 +521,7 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 			return "Error: " + err.Error(), true
 		}
 
-		v := NewValidator(0)
+		v := NewValidator(ctx, 0)
 		if err := v.CreateVariable(rootFolderID, name, description, value); err != nil {
 			return fmt.Sprintf("Error creating variable: %v", err), true
 		}
@@ -514,7 +541,7 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 		}
 		procID, _ := strconv.Atoi(matches[1])
 
-		v := NewValidator(procID)
+		v := NewValidator(ctx, procID)
 
 		jsonContent, err := LoadBinFromFile(filePath)
 		if err != nil {
@@ -578,7 +605,7 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 		}
 		procID, _ := strconv.Atoi(matches[1])
 
-		v := NewValidator(procID)
+		v := NewValidator(ctx, procID)
 
 		jsonContent, err := LoadBinFromFile(filePath)
 		if err != nil {
@@ -659,7 +686,7 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 			return fmt.Sprintf("Error resolving folder ID: %v", err), true
 		}
 
-		v := NewValidator(0)
+		v := NewValidator(ctx, 0)
 		processID := v.CreateEmptyProcess(folderID, processName, "")
 		if processID == 0 {
 			return fmt.Sprintf("Error: failed to create process '%s'", processName), true
@@ -701,7 +728,7 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 			return fmt.Sprintf("Error resolving parent folder ID: %v", err), true
 		}
 
-		v := NewValidator(0)
+		v := NewValidator(ctx, 0)
 		newFolderID, err := v.CreateFolder(parentFolderID, folderName, "")
 		if err != nil {
 			return fmt.Sprintf("Error creating folder '%s': %v", folderName, err), true
@@ -758,12 +785,11 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 		}
 		procID, _ := strconv.Atoi(matches[1])
 
-		if stageID == 0 {
+		v := NewValidator(ctx, 0)
+		if v.StageID == 0 {
 			return "Error: COREZOID_STAGE_ID environment variable is not set or invalid", true
 		}
-
-		v := NewValidator(0)
-		aliasID, err := v.CreateAlias(shortName, procID, stageID)
+		aliasID, err := v.CreateAlias(shortName, procID, v.StageID)
 		if err != nil {
 			return fmt.Sprintf("Error creating alias: %v", err), true
 		}
@@ -771,7 +797,7 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 		return fmt.Sprintf("Alias '%s' created successfully, AliasID: %d", shortName, aliasID), false
 
 	case "list-workspaces":
-		v := NewValidator(0)
+		v := NewValidator(ctx, 0)
 		ops := []map[string]any{
 			{
 				"type": "list",
@@ -820,7 +846,7 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 			return "Error: " + err.Error(), true
 		}
 
-		v := NewValidator(0)
+		v := NewValidator(ctx, 0)
 		ops := []map[string]any{
 			{
 				"type":       "list",
@@ -886,7 +912,7 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 			return "Error: " + err.Error(), true
 		}
 
-		v := NewValidator(0)
+		v := NewValidator(ctx, 0)
 		ops := []map[string]any{
 			{
 				"type":       "list",
@@ -948,7 +974,7 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 			return "Error: " + err.Error(), true
 		}
 
-		v := NewValidator(processID)
+		v := NewValidator(ctx, processID)
 		ops := []map[string]any{
 			{
 				"type":    "list",
@@ -988,12 +1014,12 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 			}
 		}
 
-		validator := NewValidator(processID)
+		validator := NewValidator(ctx, processID)
 		ops := []map[string]any{
 			{
 				"type":       "list",
 				"obj":        "node",
-				"company_id": workspaceID,
+				"company_id": validator.WorkspaceID,
 				"conv_id":    processID,
 				"obj_id":     nodeID,
 				"limit":      limit,
@@ -1040,7 +1066,7 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 			op["ref"] = ref
 		}
 
-		v := NewValidator(processID)
+		v := NewValidator(ctx, processID)
 		resp, err := v.req("modify_task", []map[string]any{op})
 		if err != nil {
 			return fmt.Sprintf("Error: %v", err), true
@@ -1059,7 +1085,7 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 			return "Error: at least one of task_id or ref must be provided", true
 		}
 
-		v := NewValidator(processID)
+		v := NewValidator(ctx, processID)
 
 		// Resolve task_id and node_id via show first
 		showOp := map[string]any{
@@ -1116,7 +1142,8 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 				tzOffset, _ = strconv.Atoi(tzStr)
 			}
 		}
-		folderID := stageID
+		v := NewValidator(ctx, 0)
+		folderID := v.StageID
 		if fid, ok := args["folder_id"]; ok {
 			if fidFloat, ok := fid.(float64); ok {
 				folderID = int(fidFloat)
@@ -1125,7 +1152,6 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 			}
 		}
 
-		v := NewValidator(0)
 		projectID := v.GetProjectIDByStageID(folderID)
 		now := int(time.Now().Unix())
 
@@ -1138,7 +1164,7 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 			"folder_id":   folderID,
 			"stage_id":    folderID,
 			"project_id":  projectID,
-			"company_id":  workspaceID,
+			"company_id":  v.WorkspaceID,
 			"status":      "active",
 			"time_range": map[string]any{
 				"select":          "online",
@@ -1161,14 +1187,14 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 			return "Error: " + err.Error(), true
 		}
 
+		v := NewValidator(ctx, 0)
 		op := map[string]any{
 			"obj":        "dashboard",
 			"type":       "show",
 			"obj_id":     dashboardID,
-			"company_id": workspaceID,
+			"company_id": v.WorkspaceID,
 		}
 
-		v := NewValidator(0)
 		resp, err := v.req("json", []map[string]any{op})
 		if err != nil {
 			return fmt.Sprintf("Error: %v", err), true
@@ -1199,6 +1225,7 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 			return fmt.Sprintf("Error parsing series JSON: %v", err), true
 		}
 
+		v := NewValidator(ctx, 0)
 		op := map[string]any{
 			"obj":          "chart",
 			"type":         "create",
@@ -1207,10 +1234,9 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 			"name":         name,
 			"description":  "",
 			"series":       series,
-			"company_id":   workspaceID,
+			"company_id":   v.WorkspaceID,
 		}
 
-		v := NewValidator(0)
 		resp, err := v.req("json", []map[string]any{op})
 		if err != nil {
 			return fmt.Sprintf("Error: %v", err), true
@@ -1245,6 +1271,7 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 			return fmt.Sprintf("Error parsing series JSON: %v", err), true
 		}
 
+		v := NewValidator(ctx, 0)
 		op := map[string]any{
 			"obj":          "chart",
 			"type":         "modify",
@@ -1254,10 +1281,9 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 			"name":         title,
 			"description":  "",
 			"series":       series,
-			"company_id":   workspaceID,
+			"company_id":   v.WorkspaceID,
 		}
 
-		v := NewValidator(0)
 		resp, err := v.req("json", []map[string]any{op})
 		if err != nil {
 			return fmt.Sprintf("Error: %v", err), true
@@ -1275,15 +1301,15 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 			return "Error: " + err.Error(), true
 		}
 
+		v := NewValidator(ctx, 0)
 		op := map[string]any{
 			"obj":          "chart",
 			"type":         "get",
 			"obj_id":       chartID,
 			"dashboard_id": dashboardID,
-			"company_id":   workspaceID,
+			"company_id":   v.WorkspaceID,
 		}
 
-		v := NewValidator(0)
 		resp, err := v.req("json", []map[string]any{op})
 		if err != nil {
 			return fmt.Sprintf("Error: %v", err), true
@@ -1333,11 +1359,12 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 			apiGrid = append(apiGrid, gridEntry)
 		}
 
+		v := NewValidator(ctx, 0)
 		op := map[string]any{
 			"obj":        "dashboard",
 			"type":       "modify",
 			"obj_id":     dashboardID,
-			"company_id": workspaceID,
+			"company_id": v.WorkspaceID,
 			"time_range": map[string]any{
 				"select":          "online",
 				"timezone_offset": tzOffset,
@@ -1345,7 +1372,6 @@ func handleToolCall(name string, args map[string]interface{}) (result string, is
 			"grid": apiGrid,
 		}
 
-		v := NewValidator(0)
 		resp, err := v.req("json", []map[string]any{op})
 		if err != nil {
 			return fmt.Sprintf("Error: %v", err), true

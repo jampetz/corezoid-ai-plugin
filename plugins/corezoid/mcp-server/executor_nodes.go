@@ -469,7 +469,7 @@ func (v *Executor) DeleteNode(id string) {
 		{
 			"type":       "delete",
 			"obj":        "node",
-			"company_id": workspaceID,
+			"company_id": v.WorkspaceID,
 			"obj_id":     id,
 			"conv_id":    v.ProcessID,
 			"version":    v.Version,

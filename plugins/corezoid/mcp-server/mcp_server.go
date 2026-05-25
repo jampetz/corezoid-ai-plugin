@@ -141,9 +141,12 @@ func runMCPServer() {
 
 	// Auto-load saved credentials if no token is configured via env.
 	// loadCredentials reads from env vars already populated by findAndLoadDotEnv().
-	if apiToken == "" {
+	// Startup is single-goroutine, but we still take the lock so the race
+	// detector sees a consistent ordering with later concurrent reads.
+	_, snapToken, _, _, _ := authSnapshot()
+	if snapToken == "" {
 		if creds, err := loadCredentials(); err == nil && creds != nil && !isCredentialsExpired(creds) {
-			apiToken = creds.AccessToken
+			withAuthLock(func() { apiToken = creds.AccessToken })
 			expiry := ""
 			if !creds.ExpiresAt.IsZero() {
 				expiry = ", expires " + creds.ExpiresAt.Format("2006-01-02 15:04")
@@ -247,12 +250,16 @@ func runMCPServer() {
 
 			// Run in a goroutine so the scanner loop can continue reading —
 			// this is required to route elicitation responses back to the handler.
+			// The ctx is now actually consumed: handleToolCall threads it down
+			// into Executor.req → http.NewRequestWithContext, so a client-side
+			// notifications/cancelled aborts the in-flight HTTP call instead
+			// of just orphaning the goroutine.
 			ctx, cancel := context.WithCancel(context.Background())
 			activeCancels.Store(req.ID, cancel)
-			go func(reqID interface{}, name string, args map[string]interface{}, _ context.Context) {
+			go func(reqID interface{}, name string, args map[string]interface{}, ctx context.Context) {
 				defer activeCancels.Delete(reqID)
 				defer cancel()
-				result, isErr := handleToolCall(name, args)
+				result, isErr := handleToolCall(ctx, name, args)
 				serverSend(mcpResponse{
 					JSONRPC: "2.0",
 					ID:      reqID,

@@ -174,8 +174,8 @@ func (v *Executor) BeforeValidation(jsonContent string, taskData map[string]inte
 			}
 		}
 	}
-	if len(aliasRefs) > 0 && stageID != 0 {
-		existingAliases, err := v.listAliasesByStage(stageID)
+	if len(aliasRefs) > 0 && v.StageID != 0 {
+		existingAliases, err := v.listAliasesByStage(v.StageID)
 		if err != nil {
 			return fmt.Errorf("alias validation failed: %v", err)
 		}
@@ -187,7 +187,7 @@ func (v *Executor) BeforeValidation(jsonContent string, taskData map[string]inte
 	}
 
 	// Check that all {{env_var[@name]}} references point to existing env variables.
-	if stageID != 0 {
+	if v.StageID != 0 {
 		matches := reEnvVar.FindAllStringSubmatch(jsonContent, -1)
 		seen := make(map[string]bool)
 		var uniqueVarNames []string
@@ -199,7 +199,7 @@ func (v *Executor) BeforeValidation(jsonContent string, taskData map[string]inte
 			}
 		}
 		if len(uniqueVarNames) > 0 {
-			existingVars, err := v.listEnvVarsByStage(stageID)
+			existingVars, err := v.listEnvVarsByStage(v.StageID)
 			if err != nil {
 				return fmt.Errorf("env var validation failed: %v", err)
 			}
