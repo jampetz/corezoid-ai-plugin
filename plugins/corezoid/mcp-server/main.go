@@ -171,7 +171,7 @@ func main() {
 	logger.Debug("Starting corezoid-mcp server, cwd=%s", cwd)
 
 	loadConfig()
-	logger.Debug("Loaded configuration", "apiURL", apiURL, "workspaceID", workspaceID, "apigwURL", apigwURL, "hasToken", apiToken != "")
+	logger.Debug("Loaded configuration: apiURL=%s workspaceID=%s apigwURL=%s hasToken=%v", apiURL, workspaceID, apigwURL, apiToken != "")
 
 	if apiToken == "" {
 		fmt.Fprintln(os.Stderr, "[corezoid-mcp] NOTICE: No credentials found in .env.")
