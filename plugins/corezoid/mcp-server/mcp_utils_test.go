@@ -111,9 +111,28 @@ func TestResolveDirPath_Empty(t *testing.T) {
 }
 
 func TestResolveDirPath_Provided(t *testing.T) {
-	args := map[string]interface{}{"path": "/tmp/foo"}
-	if got := resolveDirPath(args, "path"); got != "/tmp/foo" {
-		t.Errorf("got %q, want \"/tmp/foo\"", got)
+	// chdir into a tempdir so a relative path is unambiguous and inside cwd.
+	dir := t.TempDir()
+	orig, _ := os.Getwd()
+	os.Chdir(dir)                        //nolint:errcheck
+	t.Cleanup(func() { os.Chdir(orig) }) //nolint:errcheck
+
+	args := map[string]interface{}{"path": "sub/foo"}
+	if got := resolveDirPath(args, "path"); got != "sub/foo" {
+		t.Errorf("got %q, want %q", got, "sub/foo")
+	}
+}
+
+func TestResolveDirPath_RejectsEscape(t *testing.T) {
+	dir := t.TempDir()
+	orig, _ := os.Getwd()
+	os.Chdir(dir)                        //nolint:errcheck
+	t.Cleanup(func() { os.Chdir(orig) }) //nolint:errcheck
+
+	// "../" escape must fall back to "." (and log a warning).
+	args := map[string]interface{}{"path": "../../etc"}
+	if got := resolveDirPath(args, "path"); got != "." {
+		t.Errorf("expected escape to fall back to \".\", got %q", got)
 	}
 }
 
@@ -159,17 +178,87 @@ func TestResolveFolderIDFromDir_BadDir(t *testing.T) {
 // ---- resolveProcessPath ----------------------------------------------------
 
 func TestResolveProcessPath_ExplicitArg(t *testing.T) {
-	args := map[string]interface{}{"process_path": "/some/path.conv.json"}
+	// chdir into a tempdir so the relative path is provably inside cwd.
+	dir := t.TempDir()
+	orig, _ := os.Getwd()
+	os.Chdir(dir)                        //nolint:errcheck
+	t.Cleanup(func() { os.Chdir(orig) }) //nolint:errcheck
+
+	args := map[string]interface{}{"process_path": "sub/path.conv.json"}
 	p, err := resolveProcessPath(args, "process_path")
-	if err != nil || p != "/some/path.conv.json" {
+	if err != nil || p != "sub/path.conv.json" {
 		t.Errorf("got (%q, %v)", p, err)
+	}
+}
+
+func TestResolveProcessPath_RejectsTraversal(t *testing.T) {
+	dir := t.TempDir()
+	orig, _ := os.Getwd()
+	os.Chdir(dir)                        //nolint:errcheck
+	t.Cleanup(func() { os.Chdir(orig) }) //nolint:errcheck
+
+	// "../" escape must produce a typed error, not silently read the file.
+	args := map[string]interface{}{"process_path": "../../etc/passwd"}
+	_, err := resolveProcessPath(args, "process_path")
+	if err == nil {
+		t.Error("expected error for path-traversal arg, got nil")
+	}
+}
+
+func TestResolveProcessPath_RejectsAbsoluteEscape(t *testing.T) {
+	dir := t.TempDir()
+	orig, _ := os.Getwd()
+	os.Chdir(dir)                        //nolint:errcheck
+	t.Cleanup(func() { os.Chdir(orig) }) //nolint:errcheck
+
+	args := map[string]interface{}{"process_path": "/etc/passwd"}
+	_, err := resolveProcessPath(args, "process_path")
+	if err == nil {
+		t.Error("expected error for absolute path outside cwd, got nil")
+	}
+}
+
+func TestConfineToWorkdir_Allows(t *testing.T) {
+	dir := t.TempDir()
+	orig, _ := os.Getwd()
+	os.Chdir(dir)                        //nolint:errcheck
+	t.Cleanup(func() { os.Chdir(orig) }) //nolint:errcheck
+
+	cases := []string{"", "foo.json", "sub/bar.conv.json", "./qux"}
+	for _, c := range cases {
+		if _, err := confineToWorkdir(c); err != nil {
+			t.Errorf("confineToWorkdir(%q) = err %v, want nil", c, err)
+		}
+	}
+}
+
+func TestConfineToWorkdir_RejectsAllAbsolute(t *testing.T) {
+	// Absolute paths are rejected unconditionally — even those that point
+	// inside cwd — to dodge symlink edge cases (macOS /var → /private/var).
+	dir := t.TempDir()
+	orig, _ := os.Getwd()
+	os.Chdir(dir)                        //nolint:errcheck
+	t.Cleanup(func() { os.Chdir(orig) }) //nolint:errcheck
+
+	abs := filepath.Join(dir, "ok.conv.json")
+	if _, err := confineToWorkdir(abs); err == nil {
+		t.Error("expected absolute path to be rejected, got nil error")
+	}
+}
+
+func TestConfineToWorkdir_Rejects(t *testing.T) {
+	cases := []string{"../escape", "../../etc/passwd", "/etc/passwd", "/var/log/system.log", ".."}
+	for _, c := range cases {
+		if _, err := confineToWorkdir(c); err == nil {
+			t.Errorf("confineToWorkdir(%q) = nil, want error", c)
+		}
 	}
 }
 
 func TestResolveProcessPath_AutoDiscoverSingle(t *testing.T) {
 	dir := t.TempDir()
 	orig, _ := os.Getwd()
-	os.Chdir(dir) //nolint:errcheck
+	os.Chdir(dir)                        //nolint:errcheck
 	t.Cleanup(func() { os.Chdir(orig) }) //nolint:errcheck
 
 	os.WriteFile(filepath.Join(dir, "123_proc.conv.json"), []byte("{}"), 0644) //nolint:errcheck
@@ -185,7 +274,7 @@ func TestResolveProcessPath_AutoDiscoverSingle(t *testing.T) {
 func TestResolveProcessPath_AutoDiscoverMultiple(t *testing.T) {
 	dir := t.TempDir()
 	orig, _ := os.Getwd()
-	os.Chdir(dir) //nolint:errcheck
+	os.Chdir(dir)                        //nolint:errcheck
 	t.Cleanup(func() { os.Chdir(orig) }) //nolint:errcheck
 
 	os.WriteFile(filepath.Join(dir, "1_a.conv.json"), []byte("{}"), 0644) //nolint:errcheck
@@ -199,7 +288,7 @@ func TestResolveProcessPath_AutoDiscoverMultiple(t *testing.T) {
 func TestResolveProcessPath_AutoDiscoverNone(t *testing.T) {
 	dir := t.TempDir()
 	orig, _ := os.Getwd()
-	os.Chdir(dir) //nolint:errcheck
+	os.Chdir(dir)                        //nolint:errcheck
 	t.Cleanup(func() { os.Chdir(orig) }) //nolint:errcheck
 
 	_, err := resolveProcessPath(map[string]interface{}{}, "process_path")

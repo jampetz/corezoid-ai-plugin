@@ -167,11 +167,10 @@ func TestMCPProtocol_LintProcess_ValidSample(t *testing.T) {
 	})
 	sess.recv()
 
-	// Use the sample file that ships with the test suite.
-	samplePath, err := filepath.Abs("samples/valid_process.json")
-	if err != nil {
-		t.Fatalf("abs path: %v", err)
-	}
+	// Use the sample file that ships with the test suite. Path-traversal
+	// hardening rejects absolute paths, so pass the project-root-relative
+	// form — which is also what real MCP clients would send.
+	samplePath := "samples/valid_process.json"
 
 	sess.send(map[string]interface{}{
 		"jsonrpc": "2.0",

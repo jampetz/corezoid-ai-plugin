@@ -3,10 +3,42 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 )
+
+// confineToWorkdir is a lexical guard against path-traversal in LLM-supplied
+// path arguments. It rejects absolute paths and any relative path whose
+// cleaned form starts with ".." (i.e. escapes the working directory).
+//
+// Threat model: a prompt-injected LLM might call lint-process with
+// process_path="../../etc/passwd" or pull-folder writing to ~/.ssh/. Handlers
+// run with the user's full file permissions, so anything the path argument
+// says, the OS will do. This check is defence-in-depth: it blocks the
+// path-traversal escape without restricting legitimate relative paths inside
+// the workspace.
+//
+// Design note: absolute paths are rejected outright rather than allowed-if-
+// under-cwd. The "under-cwd" form invites subtle symlink edge cases (on
+// macOS in particular, /var/folders/... and /private/var/folders/... are the
+// same directory via symlink, breaking lexical Rel comparison) and the MCP
+// server always runs with cwd set to the project root via COREZOID_WORK_DIR,
+// so legitimate paths are naturally relative.
+func confineToWorkdir(p string) (string, error) {
+	if p == "" {
+		return p, nil
+	}
+	if filepath.IsAbs(p) {
+		return "", fmt.Errorf("absolute paths are not allowed (received %q); pass a path relative to the project root", p)
+	}
+	clean := filepath.Clean(p)
+	if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("path %q escapes working directory", p)
+	}
+	return p, nil
+}
 
 // resolveFolderIDFromDir looks for a file matching <id>_<name>.folder.json or
 // <id>_<name>.stage.json in the given directory and returns the numeric id.
@@ -80,11 +112,17 @@ func optStrArg(args map[string]interface{}, key string) string {
 
 // resolveProcessPath resolves an optional process_path argument.
 // If the argument is empty, it searches the current directory for a single
-// .conv.json file and returns its path.
+// .conv.json file and returns its path. The supplied path is confined to the
+// workspace tree (see confineToWorkdir) so a prompt-injected tool call can't
+// reach files outside the project root.
 func resolveProcessPath(args map[string]interface{}, key string) (string, error) {
 	p := optStrArg(args, key)
 	if p != "" {
-		return p, nil
+		safe, err := confineToWorkdir(p)
+		if err != nil {
+			return "", err
+		}
+		return safe, nil
 	}
 	entries, err := os.ReadDir(".")
 	if err != nil {
@@ -105,11 +143,22 @@ func resolveProcessPath(args map[string]interface{}, key string) (string, error)
 	return "", fmt.Errorf("no .conv.json file found in current directory and process_path was not provided")
 }
 
-// resolveDirPath returns the path argument or "." if absent.
+// resolveDirPath returns the path argument confined to the workspace tree,
+// or "." if the argument is absent. Returns "." and logs a warning if the
+// supplied path escapes the workspace — directory handlers (create-process,
+// create-folder) can't surface a typed error through resolveDirPath's
+// signature, so the caller's subsequent resolveFolderIDFromDir(".") will
+// fail naturally if cwd has no folder marker, which is the same error
+// the user would see for any unrecognised directory.
 func resolveDirPath(args map[string]interface{}, key string) string {
 	p := optStrArg(args, key)
 	if p == "" {
 		return "."
 	}
-	return p
+	safe, err := confineToWorkdir(p)
+	if err != nil {
+		logger.Warn("resolveDirPath: rejected path %q: %v — falling back to cwd", p, err)
+		return "."
+	}
+	return safe
 }

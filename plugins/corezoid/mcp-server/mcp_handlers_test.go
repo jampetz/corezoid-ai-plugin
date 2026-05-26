@@ -54,10 +54,10 @@ func TestHandleToolCall_LintProcess_MissingArg(t *testing.T) {
 }
 
 func TestHandleToolCall_LintProcess_ValidFile(t *testing.T) {
-	samplePath, err := filepath.Abs("samples/valid_process.json")
-	if err != nil {
-		t.Fatal(err)
-	}
+	// Path-traversal hardening rejects absolute paths, so feed the lint via
+	// a project-relative form. The sample lives at samples/valid_process.json
+	// relative to this package's directory, which is also the test cwd.
+	samplePath := filepath.Join("samples", "valid_process.json")
 	if _, err := os.Stat(samplePath); err != nil {
 		t.Skip("valid_process.json not found")
 	}
