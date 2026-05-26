@@ -8,3 +8,5 @@ package-lock.json
 convctl
 yarn.lock
 /plugins/simulator/mcp-server/info
+.env
+coverage.out
