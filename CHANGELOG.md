@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.3.5]
+
+- Feat: store ACCESS_TOKEN in ~/.corezoid/credentials instead of project .env to prevent accidental git leaks.
+- Feat: add anonymous tool-call analytics (opt-out via COREZOID_ANALYTICS_DISABLED=1).
+- Fix: sync version and license across all four manifests (.agents/plugins/marketplace.json was missing both fields).
+- Fix: replace conv_id with process_id in pull-process examples across four skill files.
+- Docs: update SECURITY.md with two-layer credential model, network activity, and analytics disclosure.
+- Docs: update corezoid-init/SKILL.md and README to reflect new credential file location.
+
 ## [2.3.4]
 
 - Fix: always ask user to choose workspace/project/stage on `login` instead of auto-selecting.
