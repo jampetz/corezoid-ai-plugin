@@ -19,10 +19,11 @@ Verify version sync between manifests:
 ```bash
 grep '"version"' plugins/corezoid/.claude-plugin/plugin.json \
                  plugins/corezoid/.codex-plugin/plugin.json \
-                 .claude-plugin/marketplace.json
+                 .claude-plugin/marketplace.json \
+                 .agents/plugins/marketplace.json
 ```
 
-All three should show the same version number.
+All four should show the same version number.
 
 ## 2. Test in Claude Code
 
@@ -50,10 +51,11 @@ Restart Codex, open Plugin Directory, select **Corezoid**, and confirm the plugi
 
 ## 4. Update Files
 
-1. Bump the version in all three manifest files:
+1. Bump the version in all four manifest files:
    - `plugins/corezoid/.claude-plugin/plugin.json`
    - `plugins/corezoid/.codex-plugin/plugin.json`
    - `.claude-plugin/marketplace.json` (the `plugins[0].version` field)
+   - `.agents/plugins/marketplace.json` (the `plugins[0].version` field)
 2. Add a section to `CHANGELOG.md` for the new version.
 3. Commit the changes.
 
@@ -61,8 +63,8 @@ Restart Codex, open Plugin Directory, select **Corezoid**, and confirm the plugi
 
 ```bash
 git push origin main
-git tag v1.x.x
-git push origin v1.x.x
+git tag vX.Y.Z
+git push origin vX.Y.Z
 ```
 
 The `release.yml` workflow fires automatically on any `v*` tag and creates a GitHub Release with the corresponding `CHANGELOG.md` section as release notes.
@@ -79,7 +81,7 @@ claude plugin install corezoid@corezoid
 **Codex (stable):**
 
 ```bash
-codex plugin marketplace add corezoid/corezoid-ai-plugin --ref v1.x.x
+codex plugin marketplace add corezoid/corezoid-ai-plugin --ref vX.Y.Z
 codex plugin marketplace upgrade corezoid
 ```
 

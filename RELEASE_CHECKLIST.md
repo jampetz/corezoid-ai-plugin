@@ -7,10 +7,11 @@ Use this before tagging a public release.
 - [ ] `plugins/corezoid/.claude-plugin/plugin.json` version is updated.
 - [ ] `plugins/corezoid/.codex-plugin/plugin.json` version matches Claude manifest.
 - [ ] `.claude-plugin/marketplace.json` `plugins[0].version` matches both manifests.
-- [ ] `.agents/plugins/marketplace.json` is present and valid JSON.
+- [ ] `.agents/plugins/marketplace.json` `plugins[0].version` matches all manifests.
+- [ ] `.agents/plugins/marketplace.json` `plugins[0].license` is `"MIT"`.
 - [ ] No TODO or placeholder values remain in any manifest.
 - [ ] Manifest asset and skill paths resolve under `plugins/corezoid/`.
-- [ ] Both `plugin.json` manifests have `"license": "MIT"` (not ISC).
+- [ ] All four manifests have `"license": "MIT"` (not ISC).
 - [ ] All plugin `source` paths listed in marketplace manifests exist on disk.
 
 ## MCP Server

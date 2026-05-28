@@ -64,8 +64,15 @@ jobs:
               codex_ver = json.load(f)["version"]
           with open(".claude-plugin/marketplace.json") as f:
               market_ver = json.load(f)["plugins"][0]["version"]
+          with open(".agents/plugins/marketplace.json") as f:
+              agents_ver = json.load(f)["plugins"][0]["version"]
 
-          versions = {"claude plugin.json": claude_ver, "codex plugin.json": codex_ver, "marketplace.json": market_ver}
+          versions = {
+              "claude plugin.json": claude_ver,
+              "codex plugin.json": codex_ver,
+              ".claude-plugin/marketplace.json": market_ver,
+              ".agents/plugins/marketplace.json": agents_ver,
+          }
           print("Versions found:", versions)
 
           if len(set(versions.values())) > 1:
@@ -81,14 +88,16 @@ jobs:
           import json, sys
 
           manifests = [
-              "plugins/corezoid/.claude-plugin/plugin.json",
-              "plugins/corezoid/.codex-plugin/plugin.json",
+              ("plugins/corezoid/.claude-plugin/plugin.json", lambda d: d.get("license")),
+              ("plugins/corezoid/.codex-plugin/plugin.json", lambda d: d.get("license")),
+              (".claude-plugin/marketplace.json",             lambda d: d["plugins"][0].get("license")),
+              (".agents/plugins/marketplace.json",            lambda d: d["plugins"][0].get("license")),
           ]
           expected = "MIT"
           errors = []
-          for path in manifests:
+          for path, getter in manifests:
               with open(path) as f:
-                  lic = json.load(f).get("license")
+                  lic = getter(json.load(f))
               if lic != expected:
                   errors.append(f"{path}: license is '{lic}', expected '{expected}'")
           if errors:
