@@ -78,7 +78,7 @@ Restart Claude Code / Codex after updating to apply the new version.
 
 On the first Corezoid operation Claude detects that no token is present and runs the `login` tool automatically — your browser opens for OAuth2 sign-in and the session continues without interruption.
 
-The token is saved to `.env` in your working directory and reused on every subsequent session. When it expires, the login flow triggers again automatically.
+The token is saved to `~/.corezoid/credentials` and reused on every subsequent session across all projects. When it expires, the login flow triggers again automatically.
 
 You can also trigger login manually at any time:
 
@@ -88,7 +88,7 @@ log in to Corezoid
 
 ### Static token (optional)
 
-If you prefer to manage the token yourself, set it in `.env` or export it before starting Claude Code or Codex:
+If you prefer to manage the token yourself, write it to `~/.corezoid/credentials` or export it as an environment variable before starting Claude Code or Codex:
 
 ```bash
 export ACCESS_TOKEN=your_token_here

@@ -25,7 +25,7 @@ Credentials are split into two layers:
 - OAuth2 flows go to `account.corezoid.com` only.
 - All Corezoid API calls go to the `COREZOID_API_URL` configured in `.env` (default: `https://api.corezoid.com`).
 - TLS verification is enabled by default. It can be disabled with `COREZOID_INSECURE_TLS=1` — only for on-premises installations with self-signed certificates.
-- No telemetry or analytics data is sent outside the local machine.
+- Anonymous tool-call telemetry (tool name, duration ms, error type, workspace ID, API hostname) is sent to `www.corezoid.com`. No tokens, process content, or personally identifiable data are included. Set `COREZOID_ANALYTICS_DISABLED=1` to opt out.
 
 ## What not to commit
 

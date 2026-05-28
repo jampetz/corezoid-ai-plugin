@@ -23,7 +23,7 @@ Call MCP tool **`login`** with no arguments. It will guide setup in one of two m
 The `login` tool handles everything automatically in sequence:
 
 1. **API URL prompt** — interactive form asking for `ACCOUNT_URL`
-2. **OAuth2** — browser window opens for authentication, token saved to `.env`
+2. **OAuth2** — browser window opens for authentication, token saved to `~/.corezoid/credentials`
 3. **Workspace picker** — fetches available workspaces and shows a dropdown, saves `WORKSPACE_ID` to `.env`
 4. **Stage picker** — lists projects then stages for selection, saves `COREZOID_STAGE_ID` to `.env`
 
@@ -41,7 +41,7 @@ When elicitation is unavailable, drive the setup yourself using explicit tool ca
 
 → Call `login(account_url=<value>)`
 
-The tool opens a browser for OAuth2 authentication and saves the token.
+The tool opens a browser for OAuth2 authentication and saves the token to `~/.corezoid/credentials`.
 
 ### B2 — Select Workspace
 
@@ -102,31 +102,45 @@ Then call `login` — it will skip already-set values and only prompt for what's
 
 On private Corezoid installations, the OAuth2 browser flow may time out because `localhost` is not registered as an allowed `redirect_uri` (see issue #7). Symptom: browser opens the workspace UI instead of redirecting back.
 
-**Workaround — populate `.env` manually before calling `login`:**
+**Workaround — populate credentials manually before calling `login`:**
 
 1. Get `ACCESS_TOKEN` from the account UI at `https://<host>/access_tokens` (create a token manually)
-2. Write `.env` in `COREZOID_WORK_DIR` (the directory where Claude Code was opened):
+2. Write the token to `~/.corezoid/credentials`:
+
+```
+ACCESS_TOKEN=<token>
+```
+
+3. Write project config to `.env` in `COREZOID_WORK_DIR` (the directory where Claude Code was opened):
 
 ```
 ACCOUNT_URL=https://<host>
 COREZOID_API_URL=https://<host>
 WORKSPACE_ID=<company_id>
-ACCESS_TOKEN=<token>
 COREZOID_STAGE_ID=<stage_id>
 ```
 
-3. Restart the MCP server so it picks up the new `.env`:
+4. Restart the MCP server so it picks up the changes:
 ```bash
 ps aux | grep "go run\|convctl" | grep -v grep | awk '{print $2}' | xargs kill
 ```
 
-4. Call `login` — it will detect `ACCESS_TOKEN` in `.env`, skip OAuth, and complete setup.
+5. Call `login` — it will detect `ACCESS_TOKEN` in `~/.corezoid/credentials`, skip OAuth, and complete setup.
 
 ---
 
-## `.env` file location
+## Credential and config file locations
 
-The Go MCP server reads `.env` from `COREZOID_WORK_DIR` — the directory where Claude Code was opened when the server started (typically `$HOME`). This is **not** the `mcp-server/` source directory.
+Credentials and project config are stored in two separate files:
+
+| File | Contents | Notes |
+|------|----------|-------|
+| `~/.corezoid/credentials` | `ACCESS_TOKEN`, `ACCESS_TOKEN_EXPIRES_AT` | User-level; shared across all projects; never in git |
+| `<COREZOID_WORK_DIR>/.env` | `WORKSPACE_ID`, `COREZOID_STAGE_ID`, API URLs | Project-level; one per workspace |
+
+`COREZOID_WORK_DIR` is the directory where Claude Code was opened when the MCP server started (typically the project root). This is **not** the `mcp-server/` source directory.
+
+The MCP server loads `~/.corezoid/credentials` first, then the project `.env`. A token in `.env` overrides the user-level one — useful for environments that manage credentials externally.
 
 ---
 
@@ -145,11 +159,11 @@ The server appends `/api/2/json` or `/api/2/download` automatically.
 
 ## Variables reference
 
-| Variable | Set during |
-|---|---|
-| `ACCOUNT_URL` | login step 1 — API URL prompt |
-| `COREZOID_API_URL` | login step 2.5 — derived from account clients API |
-| `ACCESS_TOKEN` | login step 2 — OAuth2 (or manually for on-prem) |
-| `WORKSPACE_ID` | login step 3 — workspace selection |
-| `COREZOID_STAGE_ID` | login step 4 — stage selection |
-| `COREZOID_OAUTH_CLIENT_ID` | pre-login (on-prem only) — OAuth2 client ID for deployments with a custom authorization server; cloud users do not need this |
+| Variable | Stored in | Set during |
+|---|---|---|
+| `ACCOUNT_URL` | project `.env` | login step 1 — API URL prompt |
+| `COREZOID_API_URL` | project `.env` | login step 2.5 — derived from account clients API |
+| `ACCESS_TOKEN` | `~/.corezoid/credentials` | login step 2 — OAuth2 (or manually for on-prem) |
+| `WORKSPACE_ID` | project `.env` | login step 3 — workspace selection |
+| `COREZOID_STAGE_ID` | project `.env` | login step 4 — stage selection |
+| `COREZOID_OAUTH_CLIENT_ID` | project `.env` | pre-login (on-prem only) — OAuth2 client ID for deployments with a custom authorization server; cloud users do not need this |
