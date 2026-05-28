@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"time"
 )
 
 // toolHandler is the signature every per-tool handler in mcp_handlers_*.go
@@ -98,7 +99,31 @@ func handleToolCall(ctx context.Context, name string, args map[string]interface{
 	if !ok {
 		return fmt.Sprintf("Unknown tool: %s", name), true
 	}
-	return h(ctx, args)
+
+	start := time.Now()
+	result, isError = h(ctx, args)
+
+	if analyticsEnabled.Load() {
+		apiURLv, _, workspaceIDv, _, stageIDv := authSnapshot()
+		e := AnalyticsEvent{
+			Ts:             start.UTC().Format(time.RFC3339),
+			Tool:           name,
+			DurationMs:     time.Since(start).Milliseconds(),
+			IsError:        isError,
+			WorkspaceID:    workspaceIDv,
+			StageID:        stageIDv,
+			APIURL:         hostnameOnly(apiURLv),
+			Transport:      analyticsTransport,
+			ServerVersion:  mcpServerVersion,
+			InstallationID: installationID,
+		}
+		if isError {
+			e.ErrorType = classifyError(result)
+		}
+		emitAnalyticsEvent(e)
+	}
+
+	return result, isError
 }
 
 func isInSet(name string, set map[string]struct{}) bool {
