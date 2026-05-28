@@ -135,6 +135,13 @@ func findAndLoadDotEnv() {
 }
 
 func loadConfig() {
+	// User-level credentials (~/.corezoid/credentials) are loaded first so that
+	// a project .env can still override ACCESS_TOKEN for power users who need it.
+	if credPath, err := credentialsFilePath(); err == nil {
+		if _, err := os.Stat(credPath); err == nil {
+			loadDotEnv(credPath)
+		}
+	}
 	findAndLoadDotEnv()
 	apiURL = os.Getenv("COREZOID_API_URL")
 	accountURL = os.Getenv("ACCOUNT_URL")
@@ -210,12 +217,16 @@ func main() {
 	logger.Debug("Loaded configuration: apiURL=%s workspaceID=%s apigwURL=%s hasToken=%v", apiURL, workspaceID, apigwURL, apiToken != "")
 
 	if apiToken == "" {
-		fmt.Fprintln(os.Stderr, "[corezoid-mcp] NOTICE: No credentials found in .env.")
+		fmt.Fprintln(os.Stderr, "[corezoid-mcp] NOTICE: No credentials found.")
 		fmt.Fprintln(os.Stderr, "[corezoid-mcp] Run the 'login' MCP tool to authenticate via OAuth2.")
-		fmt.Fprintf(os.Stderr, "[corezoid-mcp] Credentials will be saved to: %s\n", filepath.Join(cwd, ".env"))
+		if credPath, err := credentialsFilePath(); err == nil {
+			fmt.Fprintf(os.Stderr, "[corezoid-mcp] Token will be saved to: %s\n", credPath)
+		}
 	}
 
 	if port := os.Getenv("COREZOID_HTTP_PORT"); port != "" {
+		analyticsTransport = "http"
+		initAnalytics()
 		addr := "127.0.0.1:" + port
 		if err := runHTTPServer(addr); err != nil {
 			fmt.Fprintf(os.Stderr, "[corezoid-mcp] HTTP server error: %v\n", err)
@@ -224,6 +235,8 @@ func main() {
 		return
 	}
 
+	analyticsTransport = "stdio"
+	initAnalytics()
 	runMCPServer()
 }
 

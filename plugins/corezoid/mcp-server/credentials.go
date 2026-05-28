@@ -16,11 +16,27 @@ type Credentials struct {
 	TokenType   string    `json:"token_type"`
 }
 
-// envFilePath returns the path to the .env file in the current working directory.
-// Credentials and config are stored project-locally, not in ~/.corezoid.
+// envFilePath returns the path to the project-level .env file (cwd).
+// Project config (WORKSPACE_ID, STAGE_ID, API URLs) lives here.
 func envFilePath() string {
 	cwd, _ := os.Getwd()
 	return filepath.Join(cwd, ".env")
+}
+
+// credentialsFilePath returns ~/.corezoid/credentials — the user-level store
+// for ACCESS_TOKEN and ACCESS_TOKEN_EXPIRES_AT.  The directory is created on
+// first write; the file is kept outside the project tree so tokens can never
+// be accidentally committed to git.
+func credentialsFilePath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("cannot determine home directory: %w", err)
+	}
+	dir := filepath.Join(home, ".corezoid")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return "", fmt.Errorf("cannot create %s: %w", dir, err)
+	}
+	return filepath.Join(dir, "credentials"), nil
 }
 
 // updateEnvFile writes or updates key=value in the given .env file.
@@ -103,18 +119,21 @@ func loadCredentials() (*Credentials, error) {
 }
 
 // saveCredentials writes ACCESS_TOKEN (and optionally ACCESS_TOKEN_EXPIRES_AT)
-// to the .env file in the current working directory, and updates the in-process env vars.
+// to ~/.corezoid/credentials (user-level), not to the project .env.
 func saveCredentials(creds *Credentials) error {
-	path := envFilePath()
+	path, err := credentialsFilePath()
+	if err != nil {
+		return err
+	}
 	if err := updateEnvFile(path, "ACCESS_TOKEN", creds.AccessToken); err != nil {
-		return fmt.Errorf("failed to save token to .env: %w", err)
+		return fmt.Errorf("failed to save token to %s: %w", path, err)
 	}
 	os.Setenv("ACCESS_TOKEN", creds.AccessToken)
 
 	if !creds.ExpiresAt.IsZero() {
 		expStr := creds.ExpiresAt.Format(time.RFC3339)
 		if err := updateEnvFile(path, "ACCESS_TOKEN_EXPIRES_AT", expStr); err != nil {
-			return fmt.Errorf("failed to save token expiry to .env: %w", err)
+			return fmt.Errorf("failed to save token expiry to %s: %w", path, err)
 		}
 		os.Setenv("ACCESS_TOKEN_EXPIRES_AT", expStr)
 	}
@@ -122,9 +141,12 @@ func saveCredentials(creds *Credentials) error {
 }
 
 // deleteCredentials removes ACCESS_TOKEN and ACCESS_TOKEN_EXPIRES_AT
-// from the .env file and from the in-process environment.
+// from ~/.corezoid/credentials and from the in-process environment.
 func deleteCredentials() error {
-	path := envFilePath()
+	path, err := credentialsFilePath()
+	if err != nil {
+		return err
+	}
 	if err := removeEnvKey(path, "ACCESS_TOKEN"); err != nil {
 		return err
 	}
