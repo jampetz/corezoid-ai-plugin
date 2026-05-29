@@ -1,6 +1,6 @@
 {
   "corezoid": {
     "command": "sh",
-    "args": ["-c", "export COREZOID_WORK_DIR=\"$PWD\"; cd \"$CLAUDE_PLUGIN_ROOT/mcp-server\" && exec go run ."]
+    "args": ["-c", "export COREZOID_WORK_DIR=\"$PWD\"; exec sh \"$CLAUDE_PLUGIN_ROOT/mcp-server/run.sh\""]
   }
 }
