@@ -404,13 +404,17 @@ func handleLogin(ctx context.Context, args map[string]interface{}) (string, bool
 	return msg, false
 }
 
-// handleLogout deletes the saved credentials from .env and clears the cached
-// access token. The token write is under the auth lock so a concurrent
-// in-flight request can't briefly use the cleared token-before-deletion state.
+// handleLogout deletes the saved credentials from ~/.corezoid/credentials and
+// clears the cached access token. The token write is under the auth lock so a
+// concurrent in-flight request can't briefly use the cleared token-before-deletion state.
 func handleLogout(_ context.Context, _ map[string]interface{}) (string, bool) {
+	credPath, err := credentialsFilePath()
+	if err != nil {
+		credPath = "~/.corezoid/credentials"
+	}
 	if err := deleteCredentials(); err != nil {
 		return fmt.Sprintf("Failed to remove credentials: %v", err), true
 	}
 	withAuthLock(func() { apiToken = "" })
-	return fmt.Sprintf("Logged out. ACCESS_TOKEN removed from %s.", envFilePath()), false
+	return fmt.Sprintf("Logged out. ACCESS_TOKEN removed from %s.", credPath), false
 }
