@@ -2,12 +2,10 @@
 
 A plugin for [Claude Code](https://claude.ai/code) and [Codex](https://openai.com/codex) that connects the [Corezoid](https://corezoid.com) BPM platform to Claude via MCP. Claude gets direct access to Corezoid processes and deep platform knowledge to create, edit, review, and deploy workflows through natural conversation.
 
-<!-- VARIANT 1: tagline under the title -->
 > *Not just an MCP wrapper over the Corezoid API — an AI-Native management layer for the platform.*
 
 ## What it does
 
-<!-- VARIANT 2: intro paragraph inside "What it does" -->
 This plugin is more than an MCP wrapper over the Corezoid API — it is an AI-Native management layer that gives Claude deep platform knowledge and structured workflows, not just raw API access.
 
 The plugin bundles a Go MCP server that exposes Corezoid operations as MCP tools and provides specialist skills that teach Claude the platform model and common workflows:
