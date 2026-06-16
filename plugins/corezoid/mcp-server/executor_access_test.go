@@ -223,7 +223,7 @@ func TestWriteAPIKeySecret_WritesValidJSON(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	p := &Principal{ID: 42, APILogin: "svc-bot", APIKey: "shhh"}
+	p := &Principal{ID: 42, APILogin: 137128, APIKey: "shhh"}
 	path, err := writeAPIKeySecret(p, "My API Key!", "for tests")
 	if err != nil {
 		t.Fatalf("writeAPIKeySecret error: %v", err)
@@ -255,8 +255,9 @@ func TestWriteAPIKeySecret_WritesValidJSON(t *testing.T) {
 	if payload["secret"] != "shhh" {
 		t.Errorf("expected secret to be persisted, got %v", payload["secret"])
 	}
-	if payload["login"] != "svc-bot" {
-		t.Errorf("expected login persisted, got %v", payload["login"])
+	// JSON numbers round-trip as float64.
+	if login, _ := payload["login"].(float64); int(login) != 137128 {
+		t.Errorf("expected login=137128 persisted, got %v", payload["login"])
 	}
 	if payload["title"] != "My API Key!" {
 		t.Errorf("expected title persisted, got %v", payload["title"])

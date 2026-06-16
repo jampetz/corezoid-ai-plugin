@@ -23,12 +23,12 @@ import (
 // "api" — so callers pass Kind="user" for both real users and API keys, and
 // Kind="group" for groups.
 type Principal struct {
-	Kind    string // "user" | "group"  (api_key shares as "user")
-	ID      int
-	Title   string
-	IsAPI   bool   // true when this user is actually an API key
-	APILogin string // populated for IsAPI=true; empty otherwise
-	APIKey  string // populated for IsAPI=true after CreateAPIKey
+	Kind     string // "user" | "group"  (api_key shares as "user")
+	ID       int
+	Title    string
+	IsAPI    bool   // true when this user is actually an API key
+	APILogin int    // login obj_id (logins[0].obj_id); populated for IsAPI=true
+	APIKey   string // populated for IsAPI=true after CreateAPIKey
 }
 
 // PrivType is one of the four Corezoid privilege flavours.
@@ -369,25 +369,17 @@ func (v *Executor) CreateAPIKey(title, description string) (*Principal, string, 
 	}
 	if logins, ok := u["logins"].([]any); ok && len(logins) > 0 {
 		if l, ok := logins[0].(map[string]any); ok {
-			p.APILogin = stringValue(l, "login")
+			if f, ok := l["obj_id"].(float64); ok {
+				p.APILogin = int(f)
+			}
 			p.APIKey = stringValue(l, "key")
 		}
 	}
 	if p.ID == 0 {
 		return nil, "", fmt.Errorf("CreateAPIKey: obj_id missing in response")
 	}
-	// The create response omits the login string (it returns only the
-	// inner login obj_id). Without that string the secret is unusable,
-	// because API_LOGIN in the signed-request URL expects it. Pull it
-	// from a follow-up show call so the file we persist is complete.
-	if p.APILogin == "" {
-		if info, sErr := v.ShowAPIKey(p.ID); sErr == nil {
-			if logins, ok := info["logins"].([]any); ok && len(logins) > 0 {
-				if l, ok := logins[0].(map[string]any); ok {
-					p.APILogin = stringValue(l, "login")
-				}
-			}
-		}
+	if p.APILogin == 0 {
+		return nil, "", fmt.Errorf("CreateAPIKey: login obj_id missing in response")
 	}
 	path, err := writeAPIKeySecret(p, title, description)
 	if err != nil {
@@ -420,24 +412,6 @@ func (v *Executor) ModifyAPIKey(apiKeyUserID int, title, description string) err
 		return fmt.Errorf("ModifyAPIKey failed: %w", err)
 	}
 	return nil
-}
-
-// ShowAPIKey returns metadata about an existing API-key user. CreateAPIKey
-// calls it as a second hop to fetch the login string, which is not part of
-// the create response.
-func (v *Executor) ShowAPIKey(apiKeyUserID int) (map[string]any, error) {
-	op := map[string]any{
-		"type":       "show",
-		"obj":        "user",
-		"obj_id":     apiKeyUserID,
-		"obj_type":   "company",
-		"company_id": v.WorkspaceID,
-	}
-	resp, err := v.req("show_api_key", []map[string]any{op})
-	if err != nil {
-		return nil, fmt.Errorf("ShowAPIKey failed: %w", err)
-	}
-	return firstOp(resp)
 }
 
 // reSlugUnsafe matches characters not allowed in our secret-filename slug.

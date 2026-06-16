@@ -381,7 +381,7 @@ func handleCreateAPIKey(ctx context.Context, args map[string]interface{}) (strin
 		return fmt.Sprintf("Error: %v", err), true
 	}
 	return fmt.Sprintf(
-		"API key %q created.\n  obj_id (use as obj_to_id when sharing): %d\n  login: %s\n  secret: <written to file, never printed in chat>\n  secret file: %s   (chmod 600, JSON with login+secret+metadata)\n\n  ⚠ Corezoid only shows the secret on creation — back up or import the file before deleting it.",
+		"API key %q created.\n  obj_id (use as obj_to_id when sharing): %d\n  login: %d\n  secret: <written to file, never printed in chat>\n  secret file: %s   (chmod 600, JSON with login+secret+metadata)\n\n  ⚠ Corezoid only shows the secret on creation — back up or import the file before deleting it.",
 		title, p.ID, p.APILogin, path), false
 }
 
