@@ -206,6 +206,10 @@ validation errors, and summarize what each process does.
 | `create-process`    | Create a new empty process in a folder             |
 | `create-state-diagram` | Create a new empty state diagram (conv_type "state") in a folder |
 | `create-folder`     | Create a new subfolder                             |
+| `show-folder`       | Show folder metadata (title, kind, parent)         |
+| `list-folders`      | List immediate children of a folder (no disk I/O)  |
+| `modify-folder`     | Rename a folder or update its description          |
+| `delete-folder`     | Move a folder to the recycle bin                   |
 | `create-alias`      | Create a short alias for a process                 |
 | `create-variable`   | Create a Corezoid environment variable             |
 | `create-dashboard`  | Create a new dashboard for visualizing node metrics |
@@ -240,6 +244,7 @@ Claude Code / Codex
         │                 create-project, modify-project, delete-project, show-project
         ├── Processes     pull-process, pull-folder, push-process, lint-process
         │                 create-process, create-folder, create-alias, create-variable
+        │                 show-folder, list-folders, modify-folder, delete-folder
         ├── Tasks         run-task, list-node-tasks, list-task-history
         │                 modify-task, delete-task
         ├── Dashboards    create-dashboard, get-dashboard, add-chart,
