@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.5.0]
+
+- Feat: Project CRUD MCP tools — create-project, modify-project, delete-project, show-project — for managing Corezoid projects without leaving the IDE.
+- Feat: Folder CRUD MCP tools — show-folder, list-folders, modify-folder, delete-folder — for working with the folder hierarchy.
+- Feat: corezoid-api-connector skill with a sample API-node-list process for wiring external API integrations.
+- Refactor: API-key Principal uses login obj_id (int) instead of the login string; drops the extra show_api_key round-trip. Note: changes the on-disk format under ~/.corezoid/api-keys/ — `login` is now a JSON number.
+- Fix: bump OAuth PKCE token-exchange timeout from 30s to 60s to avoid silent failures on slow networks.
+
 ## [2.4.0]
 
 - Feat: corezoid-access skill and MCP tools for user groups, API keys, and object/folder sharing.
