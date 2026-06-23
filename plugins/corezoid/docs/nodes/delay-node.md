@@ -107,27 +107,18 @@ This lets you:
 Because the value is absolute, **always compute `now + delta`**, never a small bare number —
 a dynamic `value` of `3` would be interpreted as epoch second 3 (1970), i.e. fire immediately.
 
-The fire-moment can be produced anywhere upstream — it just has to land in task data before the
-Delay node reads it:
+**How the timestamp is produced does not matter.** The Delay node only reads the resolved value
+of its `{{placeholder}}` from task data; the only requirement is that an absolute epoch second is
+present in that key before the task reaches the node. Any of these are equivalent:
 
-- a **Set Parameter** node: `"timeout": "$.math($.unixtime()+{{delta}})"` (type `number`);
-- a **Code** node returning an epoch second;
-- passed in from **another process** or the incoming task `data`.
+- a value **passed in from another process** (or already present in the incoming task `data`);
+- a value returned by an **API Call** node;
+- a value computed in a **Code** node in JS (e.g. `return {timeout: Math.floor(Date.now()/1000) + 3}`);
+- a **Set Parameter** node: `"timeout": "$.math($.unixtime()+{{delta}})"` (type `number`).
 
 ### Pattern (verified)
 
-Upstream node computes the absolute moment:
-
-```json
-{
-  "type": "set_param",
-  "extra": { "timeout": "$.math($.unixtime()+{{delta}})" },
-  "extra_type": { "timeout": "number" },
-  "err_node_id": "error_node_id"
-}
-```
-
-Delay node holds the task until that moment, then routes onward:
+The Delay node is the only required part — set its time-semaphore `value` to the dynamic key:
 
 ```json
 {
@@ -143,9 +134,23 @@ Delay node holds the task until that moment, then routes onward:
 }
 ```
 
-**Observed behaviour** (live test, `dimension: "sec"`): with `delta = 3` the task entered the
-Delay node and reached the next node ~3 s later; with `delta = 10` it was released exactly at
-`now + 10`. Firing precision is ~1 s, and no 30-second floor is applied to the dynamic value.
+`{{timeout}}` must hold an absolute Unix second. One way to populate it (used in the live test
+below) is a Set Parameter node — but a Code node, an API response, or a value from another process
+are interchangeable:
+
+```json
+{
+  "type": "set_param",
+  "extra": { "timeout": "$.math($.unixtime()+{{delta}})" },
+  "extra_type": { "timeout": "number" },
+  "err_node_id": "error_node_id"
+}
+```
+
+**Observed behaviour** (live test, `dimension: "sec"`, `{{timeout}}` populated by Set Parameter):
+with `delta = 3` the task entered the Delay node and reached the next node ~3 s later; with
+`delta = 10` it was released exactly at `now + 10`. Firing precision is ~1 s, and no 30-second
+floor is applied to the dynamic value.
 
 ## Best Practices
 
