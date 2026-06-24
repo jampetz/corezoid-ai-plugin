@@ -1,46 +1,52 @@
 ---
 name: corezoid-feedback
 description: >
-  Collects and submits user feedback when the Corezoid plugin behaves
-  unexpectedly. Activate in two cases:
+  Collects and submits bug reports, improvement requests, and quality signals
+  about the Corezoid plugin to the Corezoid team. Activate in two cases:
 
-  1. The user explicitly signals dissatisfaction with platform behavior —
-  phrases like "this is not what I asked", "it did the wrong thing",
-  "that's broken", "сработало не так", "это не то", "оно сломало мой
-  процесс", "не то что я хотел", or explicitly asks to send feedback.
+  1. The user signals dissatisfaction, reports a bug, or requests an
+  improvement — phrases like "this is not what I asked", "it did the wrong
+  thing", "that's broken", "можно было бы лучше", "хотелось бы чтобы",
+  "было бы здорово если", "сработало не так", "это не то", "оно сломало
+  мой процесс", "не то что я хотел", or explicitly asks to report something.
 
   2. The user message reveals a platform-level mistake — wrong node type,
   wrong API choice (Corezoid vs Simulator), wrong process structure, wrong
-  MCP tool, missing required platform field — even without dissatisfaction
-  phrases. In this case add one feedback-offer line to whatever response
-  you are giving; do not open a separate feedback flow unless the user agrees.
+  MCP tool, missing required platform field — even without explicit phrases.
+  In this case add one offer line to whatever response you are giving; do
+  not open a separate flow unless the user agrees.
 
   Do NOT activate for business-logic iterations: changing values, adding
   fields, renaming things, adjusting conditions. These are normal user-driven
-  changes, not platform failures.
+  changes, not platform issues.
 ---
 
 # Corezoid Feedback Skill
 
-You help the user submit feedback about unexpected plugin behavior to the Corezoid team.
+You help users report bugs, suggest improvements, and flag unexpected behavior
+in the Corezoid plugin to the Corezoid team.
 
-## When to offer feedback
+## When to offer and how to phrase it
 
-**Case 1 — explicit dissatisfaction.** The user says something went wrong or
-uses phrases like "не то", "сломало", "wrong output", "не то что я хотел".
-Offer once:
+**Case 1 — bug or broken behavior.** The user reports something that stopped
+working, produced wrong output, or broke their process. Offer once, adapting
+to the context:
 
-> "Хотите отправить это как фидбек команде Corezoid? Это поможет улучшить плагин."
+> "Хотите сообщить о баге команде Corezoid?"
 
-**Case 2 — platform-level mistake in the user's message.** The message reveals
-that the plugin chose the wrong node type, wrong API, wrong process structure,
-or wrong MCP tool. Add one line to your normal response — whatever it is —
-without interrupting the main flow:
+**Case 2 — improvement request.** The user hints that something could work
+better ("хотелось бы", "было бы здорово", "можно улучшить"):
 
-> "Хотите отправить это как фидбек команде Corezoid?"
+> "Хотите отправить пожелание команде Corezoid?"
 
-In both cases: offer once per problem context, do not repeat if the user declines.
-Do not offer when the user is simply iterating on their business logic.
+**Case 3 — platform-level mistake by the plugin.** The message reveals that
+the plugin chose the wrong node type, wrong API, wrong structure, or wrong
+MCP tool. Add one line to the normal response without interrupting it:
+
+> "Хотите сообщить об этом команде Corezoid?"
+
+In all cases: offer once per problem context, do not repeat if the user declines.
+Do not offer when the user is iterating on business logic.
 
 ## What to collect
 
