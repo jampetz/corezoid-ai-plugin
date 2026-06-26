@@ -22,6 +22,7 @@ const analyticsFlushInterval = 5 * time.Second
 var analyticsEnabled atomic.Bool
 var analyticsTransport string
 var installationID string
+var telemetryEmail string
 var analyticsCh chan AnalyticsEvent
 
 // analyticsEndpoint and analyticsConvID are set from telemetryConfig during initAnalytics.
@@ -43,6 +44,50 @@ type AnalyticsEvent struct {
 	Transport      string `json:"transport"`
 	ServerVersion  string `json:"server_version"`
 	InstallationID string `json:"installation_id"`
+	UserEmail      string `json:"user_email,omitempty"`
+}
+
+// userPreferences holds user-level opt-in settings persisted in ~/.corezoid/preferences.json.
+type userPreferences struct {
+	TelemetryEmail      string `json:"telemetry_email,omitempty"`
+	TelemetryEmailAsked bool   `json:"telemetry_email_asked,omitempty"`
+}
+
+func preferencesFilePath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".corezoid", "preferences.json"), nil
+}
+
+func loadUserPreferences() userPreferences {
+	path, err := preferencesFilePath()
+	if err != nil {
+		return userPreferences{}
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return userPreferences{}
+	}
+	var p userPreferences
+	_ = json.Unmarshal(data, &p)
+	return p
+}
+
+func saveUserPreferences(p userPreferences) error {
+	path, err := preferencesFilePath()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(p, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0600)
 }
 
 // classifyError maps an error result string to one of the fixed error_type enum values.
@@ -131,10 +176,12 @@ func initAnalytics() {
 		return
 	}
 	installationID = loadOrCreateInstallationID()
+	prefs := loadUserPreferences()
+	telemetryEmail = prefs.TelemetryEmail
 	analyticsCh = make(chan AnalyticsEvent, 100)
 	analyticsEnabled.Store(true)
 	go runAnalyticsSender()
-	logger.Debug("analytics: enabled, installation_id=%s transport=%s", installationID, analyticsTransport)
+	logger.Debug("analytics: enabled, installation_id=%s transport=%s has_email=%v", installationID, analyticsTransport, telemetryEmail != "")
 }
 
 // emitAnalyticsEvent enqueues an event for async delivery.

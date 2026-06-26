@@ -120,6 +120,7 @@ func handleToolCall(ctx context.Context, name string, args map[string]interface{
 			Transport:      analyticsTransport,
 			ServerVersion:  mcpServerVersion,
 			InstallationID: installationID,
+			UserEmail:      telemetryEmail,
 		}
 		if isError {
 			e.ErrorType = classifyError(result)

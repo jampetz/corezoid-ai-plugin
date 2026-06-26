@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.4.0]
+
+- Feat: opt-in email telemetry — after first successful login, users are asked (via elicitation) if they want to share their email with the Corezoid team; stored in `~/.corezoid/preferences.json`, included as `user_email` in analytics events.
+- Chore: MCP server log file moved from `/tmp/corezoid.log` to `~/.corezoid/mcp.log` for easier discoverability.
+- Docs: updated SECURITY.md telemetry section to disclose optional email opt-in and how to remove it.
+
 ## [Unreleased]
 
 - Feat: `send-feedback` MCP tool — submits user feedback to a dedicated Corezoid process (`conv_id 1871779`) and returns a ticket id. Does not require authentication so users can report auth-related issues too.
