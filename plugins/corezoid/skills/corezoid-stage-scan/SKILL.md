@@ -51,7 +51,7 @@ The skill ships a self-contained Python 3 scanner (stdlib only — `zipfile`, `j
 `re`; no install). Run it directly on the export(s):
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/skills/corezoid-stage-scan/scripts/scan_stage.py" \
+python3 "${PLUGIN_ROOT}/skills/corezoid-stage-scan/scripts/scan_stage.py" \
   <stage.zip | stage_dir> [more ...] [--json report.json] [--quiet]
 ```
 

@@ -400,8 +400,8 @@ Response: `{ "obj_id": <ALIAS_ID>, "proc": "ok" }`
 
 | Path | When to read |
 |------|-------------|
-| `${CLAUDE_PLUGIN_ROOT}/docs/nodes/call-process-node.md` | `api_rpc` node — where `conv_id: "@alias"` is used |
-| `${CLAUDE_PLUGIN_ROOT}/docs/node-structures.md` | JSON schemas for `api_rpc` and `api_copy` (both use `conv_id`) |
-| `${CLAUDE_PLUGIN_ROOT}/docs/nodes/set-parameters-dynamic-values.md` | `{{conv[@alias].ref[...].field}}` state store read pattern |
-| `${CLAUDE_PLUGIN_ROOT}/docs/variables-guide.md` | Variable naming rules (same convention as alias short names) |
-| `${CLAUDE_PLUGIN_ROOT}/skills/corezoid-review/SKILL.md` | Step 10: External Dependencies — alias audit and creation |
+| `${PLUGIN_ROOT}/docs/nodes/call-process-node.md` | `api_rpc` node — where `conv_id: "@alias"` is used |
+| `${PLUGIN_ROOT}/docs/node-structures.md` | JSON schemas for `api_rpc` and `api_copy` (both use `conv_id`) |
+| `${PLUGIN_ROOT}/docs/nodes/set-parameters-dynamic-values.md` | `{{conv[@alias].ref[...].field}}` state store read pattern |
+| `${PLUGIN_ROOT}/docs/variables-guide.md` | Variable naming rules (same convention as alias short names) |
+| `${PLUGIN_ROOT}/skills/corezoid-review/SKILL.md` | Step 10: External Dependencies — alias audit and creation |

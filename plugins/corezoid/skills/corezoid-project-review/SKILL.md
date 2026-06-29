@@ -66,7 +66,7 @@ For each process in `process_inventory[]`:
 3. Store result as `process_reports[conv_id]`
 4. Log progress: `Reviewed N/total: "<title>" — X findings`
 
-Reference: `${CLAUDE_PLUGIN_ROOT}/skills/corezoid-review/SKILL.md`
+Reference: `${PLUGIN_ROOT}/skills/corezoid-review/SKILL.md`
 
 ---
 
@@ -262,9 +262,9 @@ Cross-process finding example:
 
 | Path | When to read |
 |------|-------------|
-| `${CLAUDE_PLUGIN_ROOT}/skills/corezoid-review/SKILL.md` | Per-process audit steps (Steps 1–14) |
-| `${CLAUDE_PLUGIN_ROOT}/docs/nodes/code-node.md` | Code node details and available JS libraries |
-| `${CLAUDE_PLUGIN_ROOT}/docs/nodes/call-process-node.md` | Call a Process node, semaphores |
-| `${CLAUDE_PLUGIN_ROOT}/docs/nodes/api-call-node.md` | HTTP API call configuration |
-| `${CLAUDE_PLUGIN_ROOT}/docs/process/error-handling.md` | Error handling patterns |
-| `${CLAUDE_PLUGIN_ROOT}/docs/variables-guide.md` | Variable naming rules and usage examples |
+| `${PLUGIN_ROOT}/skills/corezoid-review/SKILL.md` | Per-process audit steps (Steps 1–14) |
+| `${PLUGIN_ROOT}/docs/nodes/code-node.md` | Code node details and available JS libraries |
+| `${PLUGIN_ROOT}/docs/nodes/call-process-node.md` | Call a Process node, semaphores |
+| `${PLUGIN_ROOT}/docs/nodes/api-call-node.md` | HTTP API call configuration |
+| `${PLUGIN_ROOT}/docs/process/error-handling.md` | Error handling patterns |
+| `${PLUGIN_ROOT}/docs/variables-guide.md` | Variable naming rules and usage examples |

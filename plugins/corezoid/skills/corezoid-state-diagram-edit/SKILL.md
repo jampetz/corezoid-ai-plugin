@@ -16,7 +16,7 @@ You are a specialist in modifying Corezoid **state diagrams** (`conv_type: "stat
 
 A state diagram is a long-lived data store; modifying it means changing the set of states, the data conditions that drive transitions between them, or the side effects performed on transition. The driver processes that read / write the diagram are usually edited separately via `/corezoid-edit`.
 
-Read `${CLAUDE_PLUGIN_ROOT}/docs/state-diagrams/state-diagram-overview.md` for a refresher on the model before editing.
+Read `${PLUGIN_ROOT}/docs/state-diagrams/state-diagram-overview.md` for a refresher on the model before editing.
 
 ---
 
@@ -157,17 +157,17 @@ grep -rn "conv\[@<alias>\]" .
 
 | Path | When to read |
 |---|---|
-| `${CLAUDE_PLUGIN_ROOT}/docs/state-diagrams/state-diagram-overview.md` | Concepts, allowed nodes, root structure |
-| `${CLAUDE_PLUGIN_ROOT}/docs/state-diagrams/state-diagram-node-structures.md` | Canonical JSON for every allowed node type |
-| `${CLAUDE_PLUGIN_ROOT}/docs/state-diagrams/state-diagram-process-interaction.md` | How driver processes read / create / modify state tasks |
-| `${CLAUDE_PLUGIN_ROOT}/docs/nodes/set-state-node.md` | Background and the `{{conv[...]}}` template |
-| `${CLAUDE_PLUGIN_ROOT}/docs/nodes/copy-task-node.md` | Error catalogue for `api_copy` |
-| `${CLAUDE_PLUGIN_ROOT}/docs/nodes/condition-node.md` | `go_if_const` reference |
-| `${CLAUDE_PLUGIN_ROOT}/docs/variables-guide.md` | Variables (`{{env_var[@…]}}`) |
+| `${PLUGIN_ROOT}/docs/state-diagrams/state-diagram-overview.md` | Concepts, allowed nodes, root structure |
+| `${PLUGIN_ROOT}/docs/state-diagrams/state-diagram-node-structures.md` | Canonical JSON for every allowed node type |
+| `${PLUGIN_ROOT}/docs/state-diagrams/state-diagram-process-interaction.md` | How driver processes read / create / modify state tasks |
+| `${PLUGIN_ROOT}/docs/nodes/set-state-node.md` | Background and the `{{conv[...]}}` template |
+| `${PLUGIN_ROOT}/docs/nodes/copy-task-node.md` | Error catalogue for `api_copy` |
+| `${PLUGIN_ROOT}/docs/nodes/condition-node.md` | `go_if_const` reference |
+| `${PLUGIN_ROOT}/docs/variables-guide.md` | Variables (`{{env_var[@…]}}`) |
 
 ## Example Files
 
 | Path | Description |
 |---|---|
-| `${CLAUDE_PLUGIN_ROOT}/samples/state-diagrams/user-status-state-diagram.conv.json` | Minimal two-state diagram (`Active` ⇄ `Inactive`) |
-| `${CLAUDE_PLUGIN_ROOT}/samples/state-diagrams/user-status-driver-process.conv.json` | Companion driver process |
+| `${PLUGIN_ROOT}/samples/state-diagrams/user-status-state-diagram.conv.json` | Minimal two-state diagram (`Active` ⇄ `Inactive`) |
+| `${PLUGIN_ROOT}/samples/state-diagrams/user-status-driver-process.conv.json` | Companion driver process |

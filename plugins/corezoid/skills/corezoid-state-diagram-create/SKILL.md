@@ -20,7 +20,7 @@ Before you start, make sure you understand:
 - Only 10 node types are allowed: Start, Condition, Code, Set Parameters, Copy Task, Modify Task, Set State (= a state node), Delay, Queue, End: Success, End: Error.
 - API Call, Call a Process, Reply to Process, DB Call, Git Call, Sum, API Form are **forbidden** inside a state diagram — they belong in the driver process.
 
-Read `${CLAUDE_PLUGIN_ROOT}/docs/state-diagrams/state-diagram-overview.md` if you need a refresher on the model.
+Read `${PLUGIN_ROOT}/docs/state-diagrams/state-diagram-overview.md` if you need a refresher on the model.
 
 ---
 
@@ -154,7 +154,7 @@ Produce a valid `.conv.json` file with the following root envelope:
 
 ### Variables for constants
 
-If a node references an external id (e.g. another process to notify), store it as a Corezoid variable and reference it as `{{env_var[@variable-name]}}` — never hardcode. Use **`create-variable`** if the variable does not yet exist. See `${CLAUDE_PLUGIN_ROOT}/docs/variables-guide.md`.
+If a node references an external id (e.g. another process to notify), store it as a Corezoid variable and reference it as `{{env_var[@variable-name]}}` — never hardcode. Use **`create-variable`** if the variable does not yet exist. See `${PLUGIN_ROOT}/docs/variables-guide.md`.
 
 ### Common pitfalls
 
@@ -201,7 +201,7 @@ A state diagram is useless without a driver process that creates and modifies it
    - **Create state task:** `api_copy` with `conv_id: <sd_id>`, `ref: {{<ref>}}`, `mode: "create"`, `data: {...}`
    - **Modify state task:** `api_copy` with `conv_id: <sd_id>`, `ref: {{<ref>}}`, `mode: "modify"`, `data: {...}`
 
-Read `${CLAUDE_PLUGIN_ROOT}/docs/state-diagrams/state-diagram-process-interaction.md` for full templates.
+Read `${PLUGIN_ROOT}/docs/state-diagrams/state-diagram-process-interaction.md` for full templates.
 
 Recommend creating an alias (`/corezoid-alias-manager`) for the state diagram so the driver references `@user-states` instead of a numeric id.
 
@@ -211,17 +211,17 @@ Recommend creating an alias (`/corezoid-alias-manager`) for the state diagram so
 
 | Path | When to read |
 |---|---|
-| `${CLAUDE_PLUGIN_ROOT}/docs/state-diagrams/state-diagram-overview.md` | Concepts, allowed nodes, root structure |
-| `${CLAUDE_PLUGIN_ROOT}/docs/state-diagrams/state-diagram-node-structures.md` | Canonical JSON for every allowed node type |
-| `${CLAUDE_PLUGIN_ROOT}/docs/state-diagrams/state-diagram-process-interaction.md` | How driver processes read / create / modify state tasks |
-| `${CLAUDE_PLUGIN_ROOT}/docs/nodes/set-state-node.md` | Background on Set State (legacy `obj_type:3` form) and the `{{conv[...]}}` template |
-| `${CLAUDE_PLUGIN_ROOT}/docs/nodes/copy-task-node.md` | Error catalogue for `api_copy` |
-| `${CLAUDE_PLUGIN_ROOT}/docs/nodes/condition-node.md` | `go_if_const` reference |
-| `${CLAUDE_PLUGIN_ROOT}/docs/variables-guide.md` | Variables (`{{env_var[@…]}}`) |
+| `${PLUGIN_ROOT}/docs/state-diagrams/state-diagram-overview.md` | Concepts, allowed nodes, root structure |
+| `${PLUGIN_ROOT}/docs/state-diagrams/state-diagram-node-structures.md` | Canonical JSON for every allowed node type |
+| `${PLUGIN_ROOT}/docs/state-diagrams/state-diagram-process-interaction.md` | How driver processes read / create / modify state tasks |
+| `${PLUGIN_ROOT}/docs/nodes/set-state-node.md` | Background on Set State (legacy `obj_type:3` form) and the `{{conv[...]}}` template |
+| `${PLUGIN_ROOT}/docs/nodes/copy-task-node.md` | Error catalogue for `api_copy` |
+| `${PLUGIN_ROOT}/docs/nodes/condition-node.md` | `go_if_const` reference |
+| `${PLUGIN_ROOT}/docs/variables-guide.md` | Variables (`{{env_var[@…]}}`) |
 
 ## Example Files
 
 | Path | Description |
 |---|---|
-| `${CLAUDE_PLUGIN_ROOT}/samples/state-diagrams/user-status-state-diagram.conv.json` | Minimal two-state diagram (`Active` ⇄ `Inactive`) |
-| `${CLAUDE_PLUGIN_ROOT}/samples/state-diagrams/user-status-driver-process.conv.json` | Companion driver process that reads + modifies the state |
+| `${PLUGIN_ROOT}/samples/state-diagrams/user-status-state-diagram.conv.json` | Minimal two-state diagram (`Active` ⇄ `Inactive`) |
+| `${PLUGIN_ROOT}/samples/state-diagrams/user-status-driver-process.conv.json` | Companion driver process that reads + modifies the state |

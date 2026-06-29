@@ -45,7 +45,7 @@ Apply changes to `PROCESS_PATH`.
 
 - Connect nodes only through the `go` field
 - Every node that can fail must have `err_node_id` — point it **directly at a Final Error node** (`obj_type: 2`) unless the error path needs logic (reply to caller, retry routing). Never create an Escalation node (`obj_type: 3`) that only contains a bare `go` — that is a passthrough anti-pattern flagged by `lint-process`
-- Node IDs must be unique 24-character hex strings: `^[0-9a-f]{24}$`. **Always `pull-process` before editing** and reference only canonical, server-assigned IDs — IDs you invented in a previous push were reassigned by the server and no longer exist. New nodes added now get placeholder IDs that the server will likewise reassign on push. Existing nodes' IDs are preserved. See [Node ID Lifecycle](${CLAUDE_PLUGIN_ROOT}/docs/process/process-development-guide.md#node-id-lifecycle-server-assignment--stability-on-push).
+- Node IDs must be unique 24-character hex strings: `^[0-9a-f]{24}$`. **Always `pull-process` before editing** and reference only canonical, server-assigned IDs — IDs you invented in a previous push were reassigned by the server and no longer exist. New nodes added now get placeholder IDs that the server will likewise reassign on push. Existing nodes' IDs are preserved. See [Node ID Lifecycle](${PLUGIN_ROOT}/docs/process/process-development-guide.md#node-id-lifecycle-server-assignment--stability-on-push).
 - Use descriptive node `title` values (e.g., "Call Payment Process", not "RPC")
 - Place new nodes below existing ones, incrementing `y` by 200–250px
 - Position error nodes to the right of their parent (`x + 300`)
@@ -58,7 +58,7 @@ All constants (URLs, tokens, endpoints, hosts) must be stored as variables — n
 2. Create a new variable if needed: call MCP tool **`create-variable`** with `name`, `description`, `value`
 3. Reference in logic using `{{env_var[@variable-name]}}`
 
-See `${CLAUDE_PLUGIN_ROOT}/docs/variables-guide.md` for details.
+See `${PLUGIN_ROOT}/docs/variables-guide.md` for details.
 
 ### Node type quick reference
 
@@ -71,7 +71,7 @@ See `${CLAUDE_PLUGIN_ROOT}/docs/variables-guide.md` for details.
 | Reply to Process | 0 | `api_rpc_reply` |
 | End / Error | 2 | _(no logics)_ |
 
-For complete JSON structures see `${CLAUDE_PLUGIN_ROOT}/docs/node-structures.md`.
+For complete JSON structures see `${PLUGIN_ROOT}/docs/node-structures.md`.
 
 ### Common pitfalls
 
@@ -102,29 +102,29 @@ Use the `Read` tool to load these files when specific node or validation details
 
 | Path | When to read |
 |---|---|
-| `${CLAUDE_PLUGIN_ROOT}/docs/node-structures.md` | JSON schemas for all node types + full Logics fields reference (canonical) |
-| `${CLAUDE_PLUGIN_ROOT}/docs/nodes/set-parameters-built-in-functions.md` | Built-in functions: `$.math`, `$.date`, `$.random`, `$.sha1_hex`, `$.md5_hex`, `$.base64_encode`, `$.unixtime`, `$.map`, `$.filter` |
-| `${CLAUDE_PLUGIN_ROOT}/docs/nodes/set-parameters-dynamic-values.md` | Dynamic values: `{{var}}`, `{{node[id].count}}`, `{{node[id].SumID}}`, `{{conv[@alias].ref[...]}}`, `{{env_var[@name].key[1]}}` |
-| `${CLAUDE_PLUGIN_ROOT}/docs/tasks/task-metadata.md` | Global `root.*` fields: `root.task_id`, `root.ref`, `root.conv_id`, `root.node_id`, `root.prev_node_id`, `root.user_id`, `root.change_time`, `root.create_time` |
-| `${CLAUDE_PLUGIN_ROOT}/docs/nodes/code-node.md` | Code node details and available JS libraries |
-| `${CLAUDE_PLUGIN_ROOT}/docs/nodes/call-process-node.md` | Call a Process node, semaphores, cross-folder calls |
-| `${CLAUDE_PLUGIN_ROOT}/docs/nodes/reply-to-process-node.md` | Reply formats, object stringification |
-| `${CLAUDE_PLUGIN_ROOT}/docs/nodes/api-call-node.md` | HTTP API call configuration |
-| `${CLAUDE_PLUGIN_ROOT}/docs/nodes/end-node.md` | End node success/error configuration |
-| `${CLAUDE_PLUGIN_ROOT}/docs/nodes/condition-node.md` | Condition node (branching logic) |
-| `${CLAUDE_PLUGIN_ROOT}/docs/nodes/delay-node.md` | Delay node (timers and waiting); 30s limit is static-literal only — dynamic absolute-timestamp `value` for scheduled or sub-30s delays |
-| `${CLAUDE_PLUGIN_ROOT}/docs/nodes/copy-task-node.md` | Copy Task node (task duplication) |
-| `${CLAUDE_PLUGIN_ROOT}/docs/process/process-json-validation.md` | Validation rules and common errors |
-| `${CLAUDE_PLUGIN_ROOT}/docs/process/error-handling.md` | Error handling patterns (hardware vs software errors) |
-| `${CLAUDE_PLUGIN_ROOT}/docs/process/node-positioning-best-practices.md` | Coordinate system and layout guidelines |
-| `${CLAUDE_PLUGIN_ROOT}/docs/variables-guide.md` | Variable naming rules, creation workflow, usage examples |
+| `${PLUGIN_ROOT}/docs/node-structures.md` | JSON schemas for all node types + full Logics fields reference (canonical) |
+| `${PLUGIN_ROOT}/docs/nodes/set-parameters-built-in-functions.md` | Built-in functions: `$.math`, `$.date`, `$.random`, `$.sha1_hex`, `$.md5_hex`, `$.base64_encode`, `$.unixtime`, `$.map`, `$.filter` |
+| `${PLUGIN_ROOT}/docs/nodes/set-parameters-dynamic-values.md` | Dynamic values: `{{var}}`, `{{node[id].count}}`, `{{node[id].SumID}}`, `{{conv[@alias].ref[...]}}`, `{{env_var[@name].key[1]}}` |
+| `${PLUGIN_ROOT}/docs/tasks/task-metadata.md` | Global `root.*` fields: `root.task_id`, `root.ref`, `root.conv_id`, `root.node_id`, `root.prev_node_id`, `root.user_id`, `root.change_time`, `root.create_time` |
+| `${PLUGIN_ROOT}/docs/nodes/code-node.md` | Code node details and available JS libraries |
+| `${PLUGIN_ROOT}/docs/nodes/call-process-node.md` | Call a Process node, semaphores, cross-folder calls |
+| `${PLUGIN_ROOT}/docs/nodes/reply-to-process-node.md` | Reply formats, object stringification |
+| `${PLUGIN_ROOT}/docs/nodes/api-call-node.md` | HTTP API call configuration |
+| `${PLUGIN_ROOT}/docs/nodes/end-node.md` | End node success/error configuration |
+| `${PLUGIN_ROOT}/docs/nodes/condition-node.md` | Condition node (branching logic) |
+| `${PLUGIN_ROOT}/docs/nodes/delay-node.md` | Delay node (timers and waiting); 30s limit is static-literal only — dynamic absolute-timestamp `value` for scheduled or sub-30s delays |
+| `${PLUGIN_ROOT}/docs/nodes/copy-task-node.md` | Copy Task node (task duplication) |
+| `${PLUGIN_ROOT}/docs/process/process-json-validation.md` | Validation rules and common errors |
+| `${PLUGIN_ROOT}/docs/process/error-handling.md` | Error handling patterns (hardware vs software errors) |
+| `${PLUGIN_ROOT}/docs/process/node-positioning-best-practices.md` | Coordinate system and layout guidelines |
+| `${PLUGIN_ROOT}/docs/variables-guide.md` | Variable naming rules, creation workflow, usage examples |
 
 ## Example Processes
 
 | Path | Description |
 |---|---|
-| `${CLAUDE_PLUGIN_ROOT}/samples/stripe-checkout.json` | Stripe payment checkout flow |
-| `${CLAUDE_PLUGIN_ROOT}/samples/create-actors.json` | Creating actors/users |
-| `${CLAUDE_PLUGIN_ROOT}/samples/create-user.json` | User creation process |
-| `${CLAUDE_PLUGIN_ROOT}/samples/gpt-calculator.json` | GPT integration example |
-| `${CLAUDE_PLUGIN_ROOT}/samples/api-post.json` | HTTP POST API call example |
+| `${PLUGIN_ROOT}/samples/stripe-checkout.json` | Stripe payment checkout flow |
+| `${PLUGIN_ROOT}/samples/create-actors.json` | Creating actors/users |
+| `${PLUGIN_ROOT}/samples/create-user.json` | User creation process |
+| `${PLUGIN_ROOT}/samples/gpt-calculator.json` | GPT integration example |
+| `${PLUGIN_ROOT}/samples/api-post.json` | HTTP POST API call example |

@@ -123,7 +123,7 @@ Check: scan all downstream `extra`, condition `arg`/`val`, and `src` fields for 
 This change requires confirmation even in AUTO mode. Present:
 > "Node '[title]' calls process but does not use the reply. Replace with api_copy (fire-and-forget)? [yes/no]"
 
-If confirmed: change `type: "api_rpc"` → `type: "api_copy"`. Switch `extra`/`extra_type` to `data`/`data_type` per the api_copy schema (see `${CLAUDE_PLUGIN_ROOT}/docs/node-structures.md`).
+If confirmed: change `type: "api_rpc"` → `type: "api_copy"`. Switch `extra`/`extra_type` to `data`/`data_type` per the api_copy schema (see `${PLUGIN_ROOT}/docs/node-structures.md`).
 
 ---
 
@@ -310,12 +310,12 @@ Always apply in this sequence:
 
 | Path | When to read |
 |------|-------------|
-| `${CLAUDE_PLUGIN_ROOT}/docs/node-structures.md` | JSON schemas for all node types |
-| `${CLAUDE_PLUGIN_ROOT}/docs/nodes/set-parameters-node.md` | set_param merge rules |
-| `${CLAUDE_PLUGIN_ROOT}/docs/nodes/code-node.md` | Code node structure |
-| `${CLAUDE_PLUGIN_ROOT}/docs/nodes/api-call-node.md` | API Call semaphor configuration |
-| `${CLAUDE_PLUGIN_ROOT}/docs/nodes/call-process-node.md` | api_rpc vs api_copy decision |
-| `${CLAUDE_PLUGIN_ROOT}/docs/nodes/copy-task-node.md` | api_copy structure |
-| `${CLAUDE_PLUGIN_ROOT}/docs/nodes/waiting-for-callback-node.md` | api_callback critical semaphor |
-| `${CLAUDE_PLUGIN_ROOT}/docs/process/error-handling.md` | Error node patterns |
-| `${CLAUDE_PLUGIN_ROOT}/docs/process/node-positioning-best-practices.md` | Positioning new nodes |
+| `${PLUGIN_ROOT}/docs/node-structures.md` | JSON schemas for all node types |
+| `${PLUGIN_ROOT}/docs/nodes/set-parameters-node.md` | set_param merge rules |
+| `${PLUGIN_ROOT}/docs/nodes/code-node.md` | Code node structure |
+| `${PLUGIN_ROOT}/docs/nodes/api-call-node.md` | API Call semaphor configuration |
+| `${PLUGIN_ROOT}/docs/nodes/call-process-node.md` | api_rpc vs api_copy decision |
+| `${PLUGIN_ROOT}/docs/nodes/copy-task-node.md` | api_copy structure |
+| `${PLUGIN_ROOT}/docs/nodes/waiting-for-callback-node.md` | api_callback critical semaphor |
+| `${PLUGIN_ROOT}/docs/process/error-handling.md` | Error node patterns |
+| `${PLUGIN_ROOT}/docs/process/node-positioning-best-practices.md` | Positioning new nodes |
