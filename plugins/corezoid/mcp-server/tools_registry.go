@@ -223,6 +223,20 @@ var toolRegistry = []mcpTool{
 		},
 	},
 	{
+		Name:        "delete-process",
+		Description: "Move a Corezoid process (or state diagram) to the recycle bin (Trash). Can be restored from the Corezoid UI. Use pull-process first if you want a local backup before deleting.",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"process_id": map[string]interface{}{
+					"type":        "integer",
+					"description": "Corezoid process ID to delete",
+				},
+			},
+			"required": []string{"process_id"},
+		},
+	},
+	{
 		Name:        "create-alias",
 		Description: "Create a short alias for a Corezoid process.",
 		InputSchema: map[string]interface{}{

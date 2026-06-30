@@ -211,6 +211,7 @@ validation errors, and summarize what each process does.
 | `list-folders`      | List immediate children of a folder (no disk I/O)  |
 | `modify-folder`     | Rename a folder or update its description          |
 | `delete-folder`     | Move a folder to the recycle bin                   |
+| `delete-process`    | Move a process or state diagram to the recycle bin |
 | `create-alias`      | Create a short alias for a process                 |
 | `create-variable`   | Create a Corezoid environment variable             |
 | `create-dashboard`  | Create a new dashboard for visualizing node metrics |
@@ -267,7 +268,7 @@ Claude Code / Codex
         │                 create-project, modify-project, delete-project, show-project
         ├── Processes     pull-process, pull-folder, push-process, lint-process
         │                 create-process, create-folder, create-alias, create-variable
-        │                 show-folder, list-folders, modify-folder, delete-folder
+        │                 show-folder, list-folders, modify-folder, delete-folder, delete-process
         ├── Tasks         run-task, list-node-tasks, list-task-history
         │                 modify-task, delete-task
         ├── Dashboards    create-dashboard, get-dashboard, add-chart,
