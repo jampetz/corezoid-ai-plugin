@@ -36,9 +36,12 @@ Open the workspace in Kiro. The corezoid MCP server registers under
 `.kiro/settings/mcp.json`, the steering file under `.kiro/steering/`, and
 every skill under `.kiro/skills/<name>/`.
 
-Every GitHub Release also ships a pre-built Kiro overlay
-(`corezoid-kiro-vX.Y.Z.zip`) — extract directly over your workspace's
-`.kiro/` to skip the clone step.
+The installer hard-copies each skill into the workspace and resolves the
+`$CLAUDE_PLUGIN_ROOT` token (used in reference-doc paths) to the absolute
+plugin path at install time, since Kiro does no host-side token
+substitution of its own. This is why the clone + `install-kiro.sh` flow is
+the single supported install path on Kiro — a pre-built zip would still
+need a post-extract substitution step on every machine.
 
 ## What it does
 

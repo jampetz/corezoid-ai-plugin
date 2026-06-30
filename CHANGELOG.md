@@ -4,11 +4,10 @@
 
 ### Added
 - AWS Kiro support. The same plugin payload now installs on Kiro alongside the existing Claude Code and Codex hosts via a symmetric overlay: `plugins/corezoid/.kiro-plugin/plugin.json`, `plugins/corezoid/.mcp.kiro.json`, `plugins/corezoid/steering/corezoid.md`, and a root-level `POWER.md` distribution manifest for kiro.dev/powers.
-- `python3 scripts/generate-discovery.py --kiro` emits a runtime `.kiro/{settings,skills,steering}` overlay under `dist/kiro/`. The release pipeline zips it as `corezoid-kiro-vX.Y.Z.zip` and attaches it (plus `POWER.md`) to every GitHub Release.
-- `plugins/corezoid/scripts/install-kiro.sh` sets up an existing Kiro workspace from a cloned repo: copies the MCP entry, symlinks skills and steering. Hard-copies on Windows shells. Idempotent.
+- `plugins/corezoid/scripts/install-kiro.sh` sets up an existing Kiro workspace from a cloned repo. It copies the MCP entry, symlinks steering files, and HARD-COPIES each skill into `.kiro/skills/<name>/`, sed-substituting every `$CLAUDE_PLUGIN_ROOT` (and the braced `${CLAUDE_PLUGIN_ROOT}`) token with the absolute plugin path so reference-doc paths resolve under Kiro (which does no token substitution of its own). Hard-copies on Windows shells. Idempotent.
 
-### Changed
-- All `$CLAUDE_PLUGIN_ROOT` / `${CLAUDE_PLUGIN_ROOT}` references inside skill SKILL.md files are renamed to the host-neutral `$PLUGIN_ROOT` / `${PLUGIN_ROOT}`. The MCP wrapper script (`plugins/corezoid/mcp-server/run.sh`) resolves `$PLUGIN_ROOT` from whichever host-specific variable is present (`CLAUDE_PLUGIN_ROOT`, `KIRO_PLUGIN_ROOT`) and re-exports `CLAUDE_PLUGIN_ROOT` from the result, so existing Claude Code and Codex installs keep working byte-equivalent.
+### Notes
+- `$CLAUDE_PLUGIN_ROOT` inside SKILL.md is a host-side text substitution Claude Code performs at skill-load time (anthropics/claude-code#48230 etc.). Codex resolves the same token by the same name. There is currently no mechanism to register a host-neutral alias, so the token name stays as `$CLAUDE_PLUGIN_ROOT` across all skills; `install-kiro.sh` resolves it at install time for Kiro.
 
 ## [2.7.0]
 

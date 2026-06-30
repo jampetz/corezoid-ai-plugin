@@ -410,7 +410,7 @@ If `.env` is missing, run the `corezoid-init` skill.
 
 | Path | When to read |
 |------|-------------|
-| `${PLUGIN_ROOT}/docs/variables-guide.md` | Naming rules and usage examples (quick reference) |
-| `${PLUGIN_ROOT}/docs/nodes/set-parameters-node.md` | How `set_param` feeds variables into task data for Code nodes |
-| `${PLUGIN_ROOT}/docs/nodes/api-call-node.md` | How variables are used in URL, headers, and body fields |
-| `${PLUGIN_ROOT}/docs/process/process-json-validation.md` | How `push-process` validates `{{env_var[@name]}}` references |
+| `${CLAUDE_PLUGIN_ROOT}/docs/variables-guide.md` | Naming rules and usage examples (quick reference) |
+| `${CLAUDE_PLUGIN_ROOT}/docs/nodes/set-parameters-node.md` | How `set_param` feeds variables into task data for Code nodes |
+| `${CLAUDE_PLUGIN_ROOT}/docs/nodes/api-call-node.md` | How variables are used in URL, headers, and body fields |
+| `${CLAUDE_PLUGIN_ROOT}/docs/process/process-json-validation.md` | How `push-process` validates `{{env_var[@name]}}` references |

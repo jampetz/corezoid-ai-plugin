@@ -89,7 +89,7 @@ git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
 
-The `release.yml` workflow fires automatically on any `v*` tag. It cross-compiles the MCP server, generates SHA-256 checksums, regenerates `public/` via `python3 scripts/generate-discovery.py`, builds the Kiro overlay via `python3 scripts/generate-discovery.py --kiro`, zips it as `corezoid-kiro-vX.Y.Z.zip`, and creates a GitHub Release whose body is the matching `CHANGELOG.md` section. Both the Kiro zip and `POWER.md` are attached so kiro.dev/powers can resolve the Power manifest from the tag.
+The `release.yml` workflow fires automatically on any `v*` tag. It cross-compiles the MCP server, generates SHA-256 checksums, regenerates `public/` via `python3 scripts/generate-discovery.py`, and creates a GitHub Release whose body is the matching `CHANGELOG.md` section. `POWER.md` is attached so kiro.dev/powers can resolve the Power manifest from the tag.
 
 ## 6. Install from GitHub
 
@@ -117,15 +117,16 @@ codex plugin install corezoid@corezoid
 **AWS Kiro:**
 
 ```bash
-# Option A — install from a cloned repo (developer mode):
 git clone https://github.com/corezoid/corezoid-ai-plugin
 plugins/corezoid/scripts/install-kiro.sh "$YOUR_KIRO_WORKSPACE"
-
-# Option B — extract the pre-built overlay from the GitHub Release:
-curl -L -o corezoid-kiro.zip \
-  https://github.com/corezoid/corezoid-ai-plugin/releases/download/vX.Y.Z/corezoid-kiro-vX.Y.Z.zip
-unzip -d "$YOUR_KIRO_WORKSPACE" corezoid-kiro.zip
 ```
+
+`install-kiro.sh` hard-copies each skill into the workspace and resolves the
+`$CLAUDE_PLUGIN_ROOT` token (used in reference-doc paths) to the absolute
+plugin path at install time. Kiro does no host-side token substitution of
+its own, so a pre-built overlay zip would still need this post-extract
+step on every machine — clone + `install-kiro.sh` is therefore the single
+supported install path.
 
 To list this Power on **kiro.dev/powers**, submit the release tag URL to the
 Kiro Power registry. `POWER.md` is attached to every Release so the registry
