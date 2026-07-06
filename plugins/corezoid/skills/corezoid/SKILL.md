@@ -131,6 +131,7 @@ For domain-specific workflows use the specialized skills:
 - `/corezoid-variable-manager` — creating, listing, modifying, deleting variables (visible/secret, raw/json)
 - `/corezoid-process-optimizer` — reduce tacts (merge nodes), clean data flow, fill names, add semaphors
 - `/corezoid-api-connector` — build processes that call the Corezoid public API (`/api/2/json/`) using `api_secret_outer`
+- `/corezoid-describe` — update or create the description of a process, folder, or project without editing its logic
 
 ## Reference Documents
 
@@ -154,6 +155,42 @@ Use the `Read` tool to load these files when you need deeper detail:
 | `${CLAUDE_PLUGIN_ROOT}/docs/state-diagrams/state-diagram-node-structures.md` | JSON schemas for nodes inside a state diagram |
 | `${CLAUDE_PLUGIN_ROOT}/docs/state-diagrams/state-diagram-process-interaction.md` | How driver processes read / create / modify state tasks |
 | `${CLAUDE_PLUGIN_ROOT}/docs/variables-guide.md` | Variable naming rules, creation workflow, usage examples |
+
+## Description Update Rule
+
+After any successful change to a process, folder, or project, always set or refresh its description.
+
+### Process description
+
+The `description` field lives at the root of `.conv.json`.  
+**Update it in the same edit cycle, before `push-process`** — no second push needed.
+
+Write 1–2 sentences:
+- Sentence 1: what the process does — verb + action + subject.  
+  Example: *"Calls the Stripe API to create a payment session and returns the checkout URL."*
+- Sentence 2 (optional): key inputs/outputs or notable behaviour.  
+  Example: *"Requires `amount` and `currency`; on error returns a structured error object."*
+
+Rules:
+- Start with a verb in the third person: *Calls*, *Creates*, *Validates*, *Routes*, *Aggregates*
+- Name the external service, Corezoid object type, or business action specifically
+- Do not write *"This process…"* or *"The purpose of this…"*
+- Keep under 200 characters
+
+### Folder description
+
+Call MCP tool **`modify-folder`** with `description` after any structural change to the folder (new process added, process removed, folder renamed).
+
+Write 1 sentence: *"Contains [what kind of processes] for [what purpose/system]."*  
+Example: *"Contains Stripe payment integration processes (checkout, refund, webhook handling)."*
+
+### Project description
+
+Call MCP tool **`modify-project`** with `description` after any change that affects the project scope.
+
+Write 1–2 sentences describing what the project does as a whole.
+
+---
 
 ## Tips
 

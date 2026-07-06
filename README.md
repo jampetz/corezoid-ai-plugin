@@ -26,6 +26,7 @@ The plugin bundles a Go MCP server that exposes Corezoid operations as MCP tools
 | `corezoid-variable-manager`    | "variable", "env var", "create variable" | Create, list, modify, delete environment variables |
 | `corezoid-api-connector`       | "call Corezoid API", "api/2/json", "api_secret_outer" | Processes that call the Corezoid public API       |
 | `corezoid-process-optimizer`   | "optimize", "reduce tacts", "improve"    | Merge nodes, clean data flow, add resilience      |
+| `corezoid-describe`            | "update description", "add description", "describe this process" | Set or refresh the description of a process, folder, or project |
 | `corezoid-feedback`            | "report a bug", "this is broken", "send feedback" | Collect and submit bug reports / improvement requests |
 | `marketplace-publish-validation` | "publish to marketplace", "check before publish" | Pre-publication checklist for Corezoid marketplace |
 

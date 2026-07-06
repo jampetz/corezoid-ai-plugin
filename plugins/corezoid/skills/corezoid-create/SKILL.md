@@ -92,7 +92,7 @@ Produce a valid `.conv.json` file.
   "obj_id": null,
   "parent_id": null,
   "title": "Process Name",
-  "description": "",
+  "description": "<fill in — see rule below>",
   "status": "active",
   "params": [],
   "ref_mask": true,
@@ -103,6 +103,12 @@ Produce a valid `.conv.json` file.
   }
 }
 ```
+
+**`description`** — fill in immediately based on the requirements gathered in Step 1. Follow the Description Update Rule:
+- 1–2 sentences, starting with a verb (*Calls*, *Creates*, *Validates*, *Routes*, *Aggregates*)
+- Sentence 1: what the process does — verb + action + subject. Example: *"Calls the Stripe API to create a payment session and returns the checkout URL."*
+- Sentence 2 (optional): key inputs/outputs or notable behaviour. Example: *"Requires `amount` and `currency`; on error returns a structured error object."*
+- Under 200 characters, no *"This process…"* preamble
 
 `params` — declare all input parameters the caller must pass. See `${CLAUDE_PLUGIN_ROOT}/docs/process/process-with-parameters.md`.
 
