@@ -59,6 +59,8 @@ No Code Node is needed — `api_secret_outer` handles all authentication.
 
 Add a 30-second timeout semaphor to the API Call node.
 
+> **On-prem:** replace `api.corezoid.com` with your own API host (the value of `COREZOID_API_URL`).
+
 ## Critical rules
 
 - `api_secret_outer` handles all auth — never compute HMAC in a Code Node
@@ -74,7 +76,7 @@ Add a 30-second timeout semaphor to the API Call node.
 {
   "type": "api_rpc_reply",
   "mode": "key_value",
-  "res_data": { "result": "success", "response": "{{ops[0]}}" },
+  "res_data": { "result": "success", "response": "{{body.ops[0]}}" },
   "res_data_type": { "result": "string", "response": "object" },
   "throw_exception": false
 }

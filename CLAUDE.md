@@ -8,7 +8,7 @@ This is a Claude Code plugin (`@corezoid/corezoid-ai-plugin`) that gives Claude 
 
 The repo has three layers:
 - **Go MCP server** (`plugins/corezoid/mcp-server/`) — 44 tools, compiled from Go source, started automatically via `.mcp.json`. Has a test suite (`go test ./...`) and CI.
-- **Skills** (`plugins/corezoid/skills/`) — 19 SKILL.md files that teach Claude platform conventions.
+- **Skills** (`plugins/corezoid/skills/`) — 18 SKILL.md files that teach Claude platform conventions.
 - **Documentation corpus** (`plugins/corezoid/docs/`) — 24 node types, process guides, JSON schemas, samples.
 
 ## Plugin Development Commands
