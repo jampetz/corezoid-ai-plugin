@@ -158,37 +158,12 @@ Use the `Read` tool to load these files when you need deeper detail:
 
 ## Description Update Rule
 
-After any successful change to a process, folder, or project, always set or refresh its description.
+After any successful change to a process, folder, or project, always set or refresh its description. Full authoring rules are in `/corezoid-describe`.
 
-### Process description
-
-The `description` field lives at the root of `.conv.json`.  
-**Update it in the same edit cycle, before `push-process`** — no second push needed.
-
-Write 1–2 sentences:
-- Sentence 1: what the process does — verb + action + subject.  
-  Example: *"Calls the Stripe API to create a payment session and returns the checkout URL."*
-- Sentence 2 (optional): key inputs/outputs or notable behaviour.  
-  Example: *"Requires `amount` and `currency`; on error returns a structured error object."*
-
-Rules:
-- Start with a verb in the third person: *Calls*, *Creates*, *Validates*, *Routes*, *Aggregates*
-- Name the external service, Corezoid object type, or business action specifically
-- Do not write *"This process…"* or *"The purpose of this…"*
-- Keep under 200 characters
-
-### Folder description
-
-Call MCP tool **`modify-folder`** with `description` after any structural change to the folder (new process added, process removed, folder renamed).
-
-Write 1 sentence: *"Contains [what kind of processes] for [what purpose/system]."*  
-Example: *"Contains Stripe payment integration processes (checkout, refund, webhook handling)."*
-
-### Project description
-
-Call MCP tool **`modify-project`** with `description` after any change that affects the project scope.
-
-Write 1–2 sentences describing what the project does as a whole.
+Summary:
+- **Process** — update `description` in `.conv.json` root **before** `push-process` (no second push needed). 1–2 sentences, start with a verb (*Calls*, *Creates*, *Validates*…), under 200 characters, no *"This process…"*
+- **Folder** — call `modify-folder` with `description` if the folder was structurally changed. Resolve `folder_id` from the process's parent or by name via `list-folders`; if unresolvable, skip.
+- **Project** — call `modify-project` with `description` if project scope changed.
 
 ---
 

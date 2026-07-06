@@ -34,8 +34,17 @@ If not clear, ask:
 3. Also consider any changes the user described in the conversation — they are the primary source of intent
 
 **For a folder:**
-1. List `.conv.json` files inside the folder (use `find` Bash tool)
-2. Read titles and existing descriptions of contained processes to understand the folder's scope
+1. Resolve `folder_id` using the priority order below (Step 2a)
+2. List `.conv.json` files inside the folder (use `find` Bash tool)
+3. Read titles and existing descriptions of contained processes to understand the folder's scope
+
+**Step 2a — Resolve folder_id (for folder targets):**
+
+Use the first available source in this order:
+1. **Explicit ID** — user provided a numeric folder ID → use it directly
+2. **Process context** — a `.conv.json` is known → read its `parent_id` field → that is the `folder_id`
+3. **Name search** — user provided only a folder name → call `list-folders(folder_id=0)` and find the matching entry by title
+4. **Not found** — name search returns no match → skip the folder description update silently (do not error)
 
 **For a project:**
 1. Call `list-projects` or `show-project` to get current metadata
@@ -84,6 +93,7 @@ Write 1–2 sentences describing the project's overall purpose and the main syst
 3. Confirm: *"Description updated and deployed."*
 
 **For a folder:**
+Use the `folder_id` resolved in Step 2a. If it was not resolved (source 4 — not found), skip this step.
 Call MCP tool **`modify-folder`** with `folder_id` and `description`.
 
 **For a project:**
