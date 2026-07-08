@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.7.1]
+
+- Fix: `go_if_const` condition schema was missing `"object"` from the allowed `cast` enum, even though sibling schemas (`api`, `set_param`) already allow `object` for `extra_type` — caused `push-process` to reject processes with pre-existing, valid object-typed conditions.
+
 ## [2.7.0]
 
 - Feat: AWS Kiro support — the same plugin payload now installs on Kiro alongside Claude Code and Codex via a symmetric overlay (`plugins/corezoid/.kiro-plugin/plugin.json`, `plugins/corezoid/.mcp.kiro.json`, `plugins/corezoid/steering/corezoid.md`, and a root-level `POWER.md` distribution manifest for kiro.dev/powers).
