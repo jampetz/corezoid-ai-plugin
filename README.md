@@ -19,6 +19,16 @@ The plugin bundles a Go MCP server that exposes Corezoid operations as MCP tools
 | `corezoid-stage-scan`          | "scan stage", "check stage before merge", "why does the merge fail" | Offline pre-merge validation of exported stage `.zip`s: non-active/empty processes, broken node links, broken/inactive `conv_id` refs |
 | `corezoid-dashboard-manager`   | "create dashboard", "add chart", "visualize metrics" | Dashboards, charts, node metrics, real-time monitoring |
 | `corezoid-process-tech-writer` | "document", "write docs", "describe process" | Markdown docs + enriched JSON with node descriptions |
+| `corezoid-retro`               | "retro", "what did we learn", "capture learnings" | End-of-session retrospective: routes learnings to workspace CLAUDE.md, team feedback, settings, or personal memory — with user confirmation |
+| `corezoid-access`              | "share", "give access", "create group", "create api key" | Object sharing, user groups, API keys, invites    |
+| `corezoid-alias-manager`       | "alias", "short name", "rename alias"    | Create, list, modify, delete process aliases      |
+| `corezoid-variable-manager`    | "variable", "env var", "create variable" | Create, list, modify, delete environment variables |
+| `corezoid-api-connector`       | "call Corezoid API", "api/2/json", "api_secret_outer" | Processes that call the Corezoid public API       |
+| `corezoid-process-optimizer`   | "optimize", "reduce tacts", "improve"    | Merge nodes, clean data flow, add resilience      |
+| `corezoid-describe`            | "update description", "add description", "describe this process" | Set or refresh the description of a process, folder, or project |
+| `corezoid-feedback`            | "report a bug", "this is broken", "send feedback" | Collect and submit bug reports / improvement requests |
+| `marketplace-publish-validation` | "publish to marketplace", "check before publish" | Pre-publication checklist for Corezoid marketplace |
+| `corezoid-gitcall`             | "git call", "gitcall", "run my code", "custom code node", "python/go/php in a process" | Custom code (Python/Go/Java/PHP/JS/…) as a git_call step — parsing, libraries, crypto, attachments; handles the container build on push |
 
 ## Design philosophy
 
@@ -189,6 +199,8 @@ validation errors, and summarize what each process does.
 | `logout`            | Remove saved credentials                           |
 | `list-workspaces`   | List available workspaces and stages               |
 | `list-stages`       | List stages in a workspace                         |
+| `deploy-stage`      | Deploy/promote one stage onto another (develop→production); dry-run by default, requires explicit confirm to apply |
+| `set-stage-immutable` | Make a stage read-only (immutable) or editable; immutable stages are the only valid deploy targets; requires explicit confirm |
 | `list-projects`     | List folders and processes in a stage              |
 | `create-project`    | Create a new project (with optional stages) in a workspace |
 | `modify-project`    | Update a project's title, short_name and/or description |
@@ -211,6 +223,7 @@ validation errors, and summarize what each process does.
 | `list-folders`      | List immediate children of a folder (no disk I/O)  |
 | `modify-folder`     | Rename a folder or update its description          |
 | `delete-folder`     | Move a folder to the recycle bin                   |
+| `delete-process`    | Move a process or state diagram to the recycle bin |
 | `create-alias`      | Create a short alias for a process                 |
 | `create-variable`   | Create a Corezoid environment variable             |
 | `create-dashboard`  | Create a new dashboard for visualizing node metrics |
@@ -267,7 +280,7 @@ Claude Code / Codex
         │                 create-project, modify-project, delete-project, show-project
         ├── Processes     pull-process, pull-folder, push-process, lint-process
         │                 create-process, create-folder, create-alias, create-variable
-        │                 show-folder, list-folders, modify-folder, delete-folder
+        │                 show-folder, list-folders, modify-folder, delete-folder, delete-process
         ├── Tasks         run-task, list-node-tasks, list-task-history
         │                 modify-task, delete-task
         ├── Dashboards    create-dashboard, get-dashboard, add-chart,

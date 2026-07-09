@@ -178,7 +178,13 @@ func handlePushProcess(ctx context.Context, args map[string]interface{}) (string
 		return fmt.Sprintf("Error deploying process: %v", err), true
 	}
 
-	return fmt.Sprintf("Process deployed successfully, ProcessID: %d", procID), false
+	result := fmt.Sprintf("Process deployed successfully, ProcessID: %d", procID)
+	// Surface the git_call container build log so the user sees what the build
+	// service reported (progress + result), not just silence on success.
+	if len(v.gitCallBuildLog) > 0 {
+		result += "\n\ngit_call build:\n" + strings.Join(v.gitCallBuildLog, "\n")
+	}
+	return result, false
 }
 
 // handleLintProcess validates a local .conv.json without touching the server.
@@ -485,6 +491,22 @@ func handleModifyFolder(ctx context.Context, args map[string]interface{}) (strin
 		parts = append(parts, fmt.Sprintf("description=%q", description))
 	}
 	return fmt.Sprintf("Folder #%d updated (%s)", folderID, strings.Join(parts, ", ")), false
+}
+
+// handleDeleteProcess moves a process (conv) to the Corezoid recycle bin
+// (Trash). The operation is reversible from the UI; permanent destruction is
+// intentionally not exposed via this tool.
+func handleDeleteProcess(ctx context.Context, args map[string]interface{}) (string, bool) {
+	processID, err := intArg(args, "process_id")
+	if err != nil {
+		return "Error: " + err.Error(), true
+	}
+
+	v := NewValidator(ctx, 0)
+	if err := v.DeleteProcess(processID); err != nil {
+		return fmt.Sprintf("Error: %v", err), true
+	}
+	return fmt.Sprintf("Process #%d moved to Trash.", processID), false
 }
 
 // handleDeleteFolder moves a folder to the recycle bin. The Corezoid UI's
