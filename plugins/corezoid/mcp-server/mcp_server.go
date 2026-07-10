@@ -67,20 +67,49 @@ var pendingReqs sync.Map
 // reqCounter generates unique IDs for server-initiated requests.
 var reqCounter int64
 
-// clientSupportsElicitation is set during initialize based on the client's declared capabilities.
+// clientStateMu guards clientSupportsElicitation, clientName, and
+// clientVersion. They're written once per connection during the initialize
+// handshake but read afterwards from concurrent tool-call goroutines in HTTP
+// mode (net/http dispatches each request on its own goroutine, same reason
+// authStateMu exists for the auth-state globals above). Read paths take
+// RLock; the write path (parseInitializeParams) takes Lock.
+var clientStateMu sync.RWMutex
+
+// clientSupportsElicitation is set during initialize based on the client's
+// declared capabilities. Read it via clientElicitationSupported(), never
+// directly — see clientStateMu.
 var clientSupportsElicitation bool
 
 // clientName and clientVersion capture the connecting MCP client's declared
 // identity (e.g. "Claude Code", "1.2.3") from the initialize handshake, for
 // attribution in analytics events. Empty if the client omitted clientInfo.
+// Read them via clientIdentitySnapshot(), never directly — see clientStateMu.
 var clientName string
 var clientVersion string
 
+// clientElicitationSupported reports whether the connected client declared
+// elicitation support during initialize.
+func clientElicitationSupported() bool {
+	clientStateMu.RLock()
+	defer clientStateMu.RUnlock()
+	return clientSupportsElicitation
+}
+
+// clientIdentitySnapshot returns the connected client's declared name and
+// version, taken under the read lock.
+func clientIdentitySnapshot() (name, version string) {
+	clientStateMu.RLock()
+	defer clientStateMu.RUnlock()
+	return clientName, clientVersion
+}
+
 // parseInitializeParams extracts elicitation support and client identity from
-// an initialize request's params. Shared by the stdio and HTTP transports.
-// Fields the client omitted decode to "" (clientInfo is optional in the MCP
-// spec); if raw itself fails to parse, the globals are left unchanged.
-func parseInitializeParams(raw json.RawMessage) {
+// an initialize request's params and stores them under clientStateMu. Shared
+// by the stdio and HTTP transports. Fields the client omitted decode to ""
+// (clientInfo is optional in the MCP spec); if raw itself fails to parse, the
+// stored values are left unchanged. Returns the values it stored so callers
+// can log them without a second locked read.
+func parseInitializeParams(raw json.RawMessage) (supportsElicitation bool, name, version string) {
 	var params struct {
 		Capabilities map[string]json.RawMessage `json:"capabilities"`
 		ClientInfo   struct {
@@ -88,12 +117,15 @@ func parseInitializeParams(raw json.RawMessage) {
 			Version string `json:"version"`
 		} `json:"clientInfo"`
 	}
-	if err := json.Unmarshal(raw, &params); err != nil {
-		return
+
+	clientStateMu.Lock()
+	defer clientStateMu.Unlock()
+	if err := json.Unmarshal(raw, &params); err == nil {
+		_, clientSupportsElicitation = params.Capabilities["elicitation"]
+		clientName = params.ClientInfo.Name
+		clientVersion = params.ClientInfo.Version
 	}
-	_, clientSupportsElicitation = params.Capabilities["elicitation"]
-	clientName = params.ClientInfo.Name
-	clientVersion = params.ClientInfo.Version
+	return clientSupportsElicitation, clientName, clientVersion
 }
 
 // activeCancels maps in-progress tools/call request IDs to their cancel functions.
@@ -227,8 +259,8 @@ func runMCPServer() {
 		switch req.Method {
 		case "initialize":
 			// Read client capabilities and identity (elicitation support, name/version).
-			parseInitializeParams(req.Params)
-			logger.Info("initialize: clientSupportsElicitation=%v clientName=%q clientVersion=%q", clientSupportsElicitation, clientName, clientVersion)
+			supportsElicitation, name, version := parseInitializeParams(req.Params)
+			logger.Info("initialize: clientSupportsElicitation=%v clientName=%q clientVersion=%q", supportsElicitation, name, version)
 
 			serverSend(mcpResponse{
 				JSONRPC: "2.0",

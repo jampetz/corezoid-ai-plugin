@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.7.3]
+
+- Fix: guard the MCP client-identity state (`clientSupportsElicitation`, `clientName`, `clientVersion`) with a mutex. HTTP mode dispatches each request on its own goroutine, so concurrent `initialize` calls from different clients could race on these globals — caught by `-race` and reproduced with a new concurrency test showing torn name/version pairs from two different clients. Reads now go through `clientElicitationSupported()`/`clientIdentitySnapshot()` instead of touching the globals directly, mirroring the existing `authStateMu`/`withAuthLock` pattern.
+
 ## [2.7.2]
 
 - Feat: capture MCP client identity (`clientInfo.name`/`version` from the `initialize` handshake) and attach it to every analytics event as `client_name`/`client_version` — both the stdio and HTTP transports now parse it via one shared `parseInitializeParams()` (the HTTP transport previously ignored `initialize` params entirely).
