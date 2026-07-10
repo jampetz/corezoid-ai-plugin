@@ -160,7 +160,8 @@ func loadConfig() {
 	}
 	stageID, _ = strconv.Atoi(os.Getenv("COREZOID_STAGE_ID"))
 	insecureTLS = os.Getenv("COREZOID_INSECURE_TLS") != ""
-	cachedProjectID = 0 // reset on workspace switch so it is re-resolved
+	cachedProjectID = 0              // reset on workspace switch so it is re-resolved
+	os.Unsetenv("COREZOID_PROJECT_ID") // prevent stale process env from short-circuiting resolution
 }
 
 // runCLI executes a single MCP tool from the command line and exits.
@@ -574,7 +575,12 @@ func resolveAndCacheProjectID(v *Executor) (int, string) {
 
 // appendToDotEnv appends key=value to the nearest .env file if the key is absent.
 // Returns true when the value was actually written (first time only).
+// The read-check-write is serialised under authStateMu to prevent duplicate entries
+// from concurrent resolveAndCacheProjectID calls.
 func appendToDotEnv(key, value string) bool {
+	authStateMu.Lock()
+	defer authStateMu.Unlock()
+
 	envPath := findDotEnvPath()
 	if envPath == "" {
 		return false

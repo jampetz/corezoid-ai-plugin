@@ -188,13 +188,16 @@ func handlePushProcess(ctx context.Context, args map[string]interface{}) (string
 			title := fmt.Sprintf("pre-push %s %s", name, time.Now().UTC().Format("2006-01-02 15:04"))
 			if snapObjID, snapVer, snapErr := v.CreateSnapshot(existingObjID, projectID, v.StageID, title); snapErr != nil {
 				logger.Warn("[snapshot] auto-snapshot failed, continuing: %v", snapErr)
+				snapshotNote = fmt.Sprintf("Warning: auto-snapshot failed (%v).", snapErr)
 			} else {
 				logger.Info("[snapshot] created version %d (obj_id=%d) for process %d", snapVer, snapObjID, existingObjID)
 				snapshotNote = fmt.Sprintf("Snapshot created before push (version %d, obj_id=%d).", snapVer, snapObjID)
 			}
-			if envNotice != "" {
+			if envNotice != "" && snapshotNote != "" {
 				snapshotNote += " " + envNotice
 			}
+		} else {
+			snapshotNote = "Warning: auto-snapshot skipped (project_id unresolved)."
 		}
 	}
 
