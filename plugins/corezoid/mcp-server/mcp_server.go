@@ -96,11 +96,49 @@ func clientElicitationSupported() bool {
 }
 
 // clientIdentitySnapshot returns the connected client's declared name and
-// version, taken under the read lock.
+// version, taken under the read lock. In HTTP mode this reflects whichever
+// session last called initialize — callers that have a per-request ctx
+// should use clientIdentityFor instead, which is session-aware.
 func clientIdentitySnapshot() (name, version string) {
 	clientStateMu.RLock()
 	defer clientStateMu.RUnlock()
 	return clientName, clientVersion
+}
+
+// contextKey namespaces values stored on context.Context so they can't
+// collide with keys another package might use.
+type contextKey string
+
+// clientIdentity is a transport-neutral client name/version pair. HTTP mode
+// converts its session-store entry (mcp_http.go's httpClientIdentity, which
+// also carries bookkeeping like LastSeen that has no meaning here) into this
+// shape before attaching it to a request context.
+type clientIdentity struct {
+	Name    string
+	Version string
+}
+
+// clientIdentityContextKey holds a resolved per-session clientIdentity,
+// attached to the context for a tools/call request in HTTP mode once the
+// caller's session has been resolved (see httpDispatch's tools/call case).
+const clientIdentityContextKey contextKey = "mcpClientIdentity"
+
+// clientIdentityFor resolves the calling client's identity for the given
+// request context. HTTP mode can serve multiple concurrent MCP clients
+// against one server process — net/http dispatches each request on its own
+// goroutine — so a single process-global clientName/clientVersion (as used
+// by clientIdentitySnapshot) would let whichever client initialized most
+// recently silently overwrite every other connected client's attribution in
+// analytics. If ctx carries a resolved per-session identity, that's used;
+// otherwise this falls back to the process-global snapshot, which is always
+// correct for stdio (one process is definitionally one client) and is the
+// best available answer for an HTTP request that arrived without a
+// recognized session.
+func clientIdentityFor(ctx context.Context) (name, version string) {
+	if ci, ok := ctx.Value(clientIdentityContextKey).(clientIdentity); ok {
+		return ci.Name, ci.Version
+	}
+	return clientIdentitySnapshot()
 }
 
 // parseInitializeParams extracts elicitation support and client identity from

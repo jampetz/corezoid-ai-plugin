@@ -147,7 +147,7 @@ func handleToolCall(ctx context.Context, name string, args map[string]interface{
 
 	if analyticsEnabled.Load() {
 		apiURLv, _, _, _, _ := authSnapshot()
-		clientNameV, clientVersionV := clientIdentitySnapshot()
+		clientNameV, clientVersionV := clientIdentityFor(ctx)
 		e := AnalyticsEvent{
 			Ts:             start.UTC().Format(time.RFC3339),
 			Tool:           name,

@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.7.5]
+
+- Fix: `clientName`/`clientVersion` were still process-global even after the `clientStateMu` mutex fix, so in HTTP mode — where one server process can serve multiple concurrent MCP clients — whichever client's `initialize` ran most recently silently overwrote every other connected client's attribution in analytics. Track identity per HTTP session instead, keyed by `Mcp-Session-Id` (minted at `initialize`, threaded through `context.Context` into `handleToolCall`), with a fallback to the old global for stdio and non-compliant clients. Added an idle-session sweep (1hr timeout) since persistent session state needed a bound the previous stateless design didn't. Verified with a real end-to-end concurrency test (20 simulated clients through an `httptest.Server`) that reproduces the cross-attribution bug when the fix is disabled.
+
 ## [2.7.4]
 
 - Fix: guard `stopAnalytics()` with a `sync.Once`. `main.go` calls it from up to three places (a deferred call, the SIGINT/SIGTERM handler, and the HTTP-server-error path), and the sender goroutine exits after its first flush — so a second or third call found no receiver on `analyticsFlushCh` and blocked out a full 1s timeout for nothing, up to 2s on the HTTP-error path if a signal arrived concurrently. Verified with a new test that fails against the pre-fix code and passes clean with the guard.
