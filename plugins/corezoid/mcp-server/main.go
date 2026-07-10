@@ -533,62 +533,68 @@ func fixStruct(dataBin string, inProcessID int) (string, []string) {
 	return string(dataRspBin), messages
 }
 
-// resolveAndCacheProjectID returns the project ID for the current stage.
+// resolveAndCacheProjectID returns the project ID for the current stage and an
+// optional user-visible notice when COREZOID_PROJECT_ID is written to .env for
+// the first time. The notice is non-empty only on the first API resolution.
 // Priority: in-memory cache → COREZOID_PROJECT_ID env var → API (ShowFolder).
-// On first API resolution it persists the value to .env and the process env.
 // Thread-safe: reads under RLock, writes under Lock.
-func resolveAndCacheProjectID(v *Executor) int {
+func resolveAndCacheProjectID(v *Executor) (int, string) {
 	// Fast path: cache hit (read lock only).
 	authStateMu.RLock()
 	id := cachedProjectID
 	authStateMu.RUnlock()
 	if id != 0 {
-		return id
+		return id, ""
 	}
 
 	// Try env var (no API call needed).
 	if s := os.Getenv("COREZOID_PROJECT_ID"); s != "" {
 		if parsed, err := strconv.Atoi(s); err == nil && parsed != 0 {
 			withAuthLock(func() { cachedProjectID = parsed })
-			return parsed
+			return parsed, ""
 		}
 	}
 
 	// Resolve via API — must not hold the lock during I/O.
 	if v.StageID == 0 {
-		return 0
+		return 0, ""
 	}
 	resolved := v.GetProjectIDByStageID(v.StageID)
 	if resolved == 0 {
-		return 0
+		return 0, ""
 	}
 	withAuthLock(func() { cachedProjectID = resolved })
 	os.Setenv("COREZOID_PROJECT_ID", strconv.Itoa(resolved))
-	appendToDotEnv("COREZOID_PROJECT_ID", strconv.Itoa(resolved))
-	return resolved
+	if written := appendToDotEnv("COREZOID_PROJECT_ID", strconv.Itoa(resolved)); written {
+		notice := fmt.Sprintf("(COREZOID_PROJECT_ID=%d saved to .env for future use)", resolved)
+		return resolved, notice
+	}
+	return resolved, ""
 }
 
 // appendToDotEnv appends key=value to the nearest .env file if the key is absent.
-func appendToDotEnv(key, value string) {
+// Returns true when the value was actually written (first time only).
+func appendToDotEnv(key, value string) bool {
 	envPath := findDotEnvPath()
 	if envPath == "" {
-		return
+		return false
 	}
 	data, _ := os.ReadFile(envPath)
 	// Skip if key already present.
 	for _, line := range strings.Split(string(data), "\n") {
 		if strings.HasPrefix(strings.TrimSpace(line), key+"=") {
-			return
+			return false
 		}
 	}
 	f, err := os.OpenFile(envPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		logger.Warn("[snapshot] could not update .env: %v", err)
-		return
+		return false
 	}
 	defer f.Close()
 	_, _ = fmt.Fprintf(f, "\n%s=%s\n", key, value)
 	logger.Info("[snapshot] wrote %s=%s to %s", key, value, envPath)
+	return true
 }
 
 // findDotEnvPath returns the path of the nearest .env file by walking up from cwd.

@@ -28,7 +28,7 @@ func handleCreateSnapshot(ctx context.Context, args map[string]interface{}) (str
 	}
 
 	v := NewValidator(ctx, procID)
-	projectID := resolveAndCacheProjectID(v)
+	projectID, envNotice := resolveAndCacheProjectID(v)
 	if projectID == 0 {
 		return "Error: could not resolve project_id. Set COREZOID_PROJECT_ID in .env or ensure COREZOID_STAGE_ID is configured.", true
 	}
@@ -38,7 +38,11 @@ func handleCreateSnapshot(ctx context.Context, args map[string]interface{}) (str
 		return fmt.Sprintf("Error creating snapshot: %v", err), true
 	}
 
-	return fmt.Sprintf("Snapshot created: version %d (obj_id=%d) — %q", version, objID, title), false
+	result := fmt.Sprintf("Snapshot created: version %d (obj_id=%d) — %q", version, objID, title)
+	if envNotice != "" {
+		result += " " + envNotice
+	}
+	return result, false
 }
 
 // handleListSnapshots returns all snapshots for the given process.
@@ -54,7 +58,7 @@ func handleListSnapshots(ctx context.Context, args map[string]interface{}) (stri
 	}
 
 	v := NewValidator(ctx, procID)
-	projectID := resolveAndCacheProjectID(v)
+	projectID, _ := resolveAndCacheProjectID(v)
 	if projectID == 0 {
 		return "Error: could not resolve project_id.", true
 	}
@@ -90,7 +94,7 @@ func handleDeleteSnapshot(ctx context.Context, args map[string]interface{}) (str
 	}
 
 	v := NewValidator(ctx, procID)
-	projectID := resolveAndCacheProjectID(v)
+	projectID, _ := resolveAndCacheProjectID(v)
 	if projectID == 0 {
 		return "Error: could not resolve project_id.", true
 	}
@@ -120,7 +124,7 @@ func handleGetSnapshot(ctx context.Context, args map[string]interface{}) (string
 	}
 
 	v := NewValidator(ctx, procID)
-	projectID := resolveAndCacheProjectID(v)
+	projectID, _ := resolveAndCacheProjectID(v)
 	if projectID == 0 {
 		return "Error: could not resolve project_id.", true
 	}

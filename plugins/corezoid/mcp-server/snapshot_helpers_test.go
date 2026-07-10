@@ -113,9 +113,12 @@ func TestResolveAndCacheProjectID_FromEnv(t *testing.T) {
 
 	// v with StageID=0 — API path must not be reached.
 	v := &Executor{}
-	got := resolveAndCacheProjectID(v)
+	got, notice := resolveAndCacheProjectID(v)
 	if got != 188280 {
 		t.Errorf("expected 188280 from env, got %d", got)
+	}
+	if notice != "" {
+		t.Errorf("expected no notice from env path, got %q", notice)
 	}
 	if cachedProjectID != 188280 {
 		t.Errorf("expected cachedProjectID=188280, got %d", cachedProjectID)
@@ -128,8 +131,11 @@ func TestResolveAndCacheProjectID_FromCache(t *testing.T) {
 	defer func() { cachedProjectID = orig }()
 
 	v := &Executor{} // StageID=0, would fail API call
-	got := resolveAndCacheProjectID(v)
+	got, notice := resolveAndCacheProjectID(v)
 	if got != 42000 {
 		t.Errorf("expected cached value 42000, got %d", got)
+	}
+	if notice != "" {
+		t.Errorf("expected no notice from cache path, got %q", notice)
 	}
 }
