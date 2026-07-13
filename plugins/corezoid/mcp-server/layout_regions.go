@@ -359,6 +359,108 @@ func detectRegions(nodes []map[string]interface{}) ([]regionBundle, []map[string
 	return bundles, work
 }
 
+// clusterPlacement is one node of a dedicated error cluster, positioned
+// relative to its owner (dx to the right, dy down from the owner's row).
+type clusterPlacement struct {
+	id     string
+	dx, dy int
+}
+
+// nodeClusterStrip walks the owner's dedicated error cluster (its err targets
+// plus their tails within members) as a compact strip: the primary direction
+// advances right by layErrDX, a branch fan steps down by layRowStep/2 — so the
+// standard err → Condition → {Delay, Reply → Error} shape sits tight next to
+// the node it serves. Returns the placements plus the strip extent.
+func nodeClusterStrip(g *layoutGraph, owner string, members map[string]bool) (out []clusterPlacement, w, h int) {
+	var queue []string
+	seen := map[string]bool{}
+	for _, e := range g.errors[owner] {
+		if members[e] && !seen[e] {
+			seen[e] = true
+			queue = append(queue, e)
+		}
+	}
+	colI, rowOff := 0, 0
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		out = append(out, clusterPlacement{cur, (colI + 1) * layErrDX, rowOff})
+		if x := (colI+2)*layErrDX - 100; x > w {
+			w = x
+		}
+		_, bh := nodeBoxSize(g.byID[cur])
+		if b := rowOff + bh; b > h {
+			h = b
+		}
+		var nexts []string
+		for _, v := range g.succs(cur) {
+			if members[v] && !seen[v] {
+				seen[v] = true
+				nexts = append(nexts, v)
+			}
+		}
+		if len(nexts) == 1 {
+			colI++
+		} else if len(nexts) > 1 {
+			colI = 0
+			rowOff += layRowStep / 2
+		}
+		queue = append(queue, nexts...)
+	}
+	return out, w, h
+}
+
+// splitSinkOwnership partitions a region's side sinks into per-column-node
+// dedicated clusters (reachable from exactly ONE column node's error paths)
+// and the truly shared remainder.
+func splitSinkOwnership(g *layoutGraph, cols [][]string, sinks []string) (map[string][]string, []string) {
+	sinkSet := map[string]bool{}
+	for _, s := range sinks {
+		sinkSet[s] = true
+	}
+	owners := map[string]map[string]bool{} // sink -> owner col nodes
+	for _, c := range cols {
+		for _, u := range c {
+			var stack []string
+			for _, e := range g.errors[u] {
+				if sinkSet[e] {
+					stack = append(stack, e)
+				}
+			}
+			visited := map[string]bool{}
+			for len(stack) > 0 {
+				v := stack[len(stack)-1]
+				stack = stack[:len(stack)-1]
+				if visited[v] || !sinkSet[v] {
+					continue
+				}
+				visited[v] = true
+				if owners[v] == nil {
+					owners[v] = map[string]bool{}
+				}
+				owners[v][u] = true
+				stack = append(stack, g.succs(v)...)
+				stack = append(stack, g.errors[v]...)
+			}
+		}
+	}
+	pinned := map[string][]string{}
+	var shared []string
+	for _, s := range sinks { // sinks are sorted → deterministic
+		os := owners[s]
+		if len(os) == 1 {
+			var owner string
+			for u := range os {
+				owner = u
+			}
+			pinned[owner] = append(pinned[owner], s)
+		} else {
+			shared = append(shared, s)
+		}
+	}
+	return pinned, shared
+}
+
 // layoutHybrid is the region composition: lay the residual graph out with the
 // waterfall, then expand the bundles back as aligned grids.
 func (e *layoutEngine) layoutHybrid(nodes []map[string]interface{}) map[string]lpoint {
@@ -411,7 +513,32 @@ func (e *layoutEngine) layoutHybrid(nodes []map[string]interface{}) map[string]l
 			}
 		}
 		collapseIfs(colnodes)
-		colPitch := 200 + gapH
+
+		// Per-node error clusters stay WITH their owner: sinks reachable from
+		// exactly one column node are pinned right of that node (the column
+		// pitch widens to make room); only truly shared sinks keep the side
+		// column. Cluster members collapse like every railed error node.
+		pinned, sharedSinks := splitSinkOwnership(g, b.cols, b.sinks)
+		clusterExtW := map[string]int{}
+		clusterExtH := map[string]int{}
+		maxClusterW := 0
+		for owner, members := range pinned {
+			mset := map[string]bool{}
+			for _, m := range members {
+				mset[m] = true
+				n := g.byID[m]
+				if !isCircle(n) {
+					collapseNode(n)
+				}
+			}
+			_, w, h := nodeClusterStrip(g, owner, mset)
+			clusterExtW[owner] = w
+			clusterExtH[owner] = h
+			if w > maxClusterW {
+				maxClusterW = w
+			}
+		}
+		colPitch := 200 + gapH + maxClusterW
 
 		var gridH int
 		var rowH []int
@@ -432,6 +559,9 @@ func (e *layoutEngine) layoutHybrid(nodes []map[string]interface{}) map[string]l
 						if _, h := nodeBoxSize(g.byID[c[i]]); h > m {
 							m = h
 						}
+						if h := clusterExtH[c[i]]; h > m {
+							m = h
+						}
 					}
 				}
 				rowH[i] = m
@@ -450,6 +580,9 @@ func (e *layoutEngine) layoutHybrid(nodes []map[string]interface{}) map[string]l
 				h := 0
 				for _, u := range r {
 					_, bh := nodeBoxSize(g.byID[u])
+					if ext := clusterExtH[u]; ext > bh {
+						bh = ext
+					}
 					h += bh + gapV
 				}
 				if h > gridH {
@@ -482,7 +615,7 @@ func (e *layoutEngine) layoutHybrid(nodes []map[string]interface{}) map[string]l
 		}
 
 		ncols := widthCols
-		if len(b.sinks) > 0 {
+		if len(sharedSinks) > 0 {
 			ncols++
 		}
 		hp := coords[b.hub]
@@ -546,10 +679,31 @@ func (e *layoutEngine) layoutHybrid(nodes []map[string]interface{}) map[string]l
 				default:
 					coords[u] = lpoint{int(colX), int(yy)}
 				}
+				if members := pinned[u]; len(members) > 0 {
+					mset := map[string]bool{}
+					for _, m := range members {
+						mset[m] = true
+					}
+					strip, _, _ := nodeClusterStrip(g, u, mset)
+					for _, cp := range strip {
+						mn := g.byID[cp.id]
+						off := 0
+						if isCircle(mn) {
+							off = layCircleXOffset
+						} else if isCollapsedNode(mn) {
+							off = layCollapsedXOffset
+						}
+						coords[cp.id] = lpoint{int(colX) + cp.dx + off, int(yy) + cp.dy}
+					}
+				}
 				if b.kind == "table" {
 					yy += float64(rowH[ri] + gapV)
 				} else {
-					yy += float64(h + gapV)
+					h2 := h
+					if ext := clusterExtH[u]; ext > h2 {
+						h2 = ext
+					}
+					yy += float64(h2 + gapV)
 				}
 			}
 		}
@@ -565,7 +719,7 @@ func (e *layoutEngine) layoutHybrid(nodes []map[string]interface{}) map[string]l
 		// side sinks: extra column
 		sx := left + float64(colPitch*widthCols)
 		yy := float64(top)
-		for _, u := range b.sinks {
+		for _, u := range sharedSinks {
 			n := g.byID[u]
 			_, h := nodeBoxSize(n)
 			off := 0

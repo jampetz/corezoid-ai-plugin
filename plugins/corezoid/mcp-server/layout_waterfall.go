@@ -666,10 +666,21 @@ func (e *layoutEngine) layout(nodes []map[string]interface{}) map[string]lpoint 
 			}
 			ey = maxY + layRowStep/2
 		}
-		dx, cur := 0, eid
-		for cur != "" && errOnly[cur] {
+		// Walk the WHOLE cluster from its entry (BFS in edge order): the
+		// primary chain advances to the right; branch targets (the retry
+		// Delay of the standard err → IF → Delay → back loop) step DOWN
+		// under their parent instead of falling to the orphan grid far from
+		// the node they serve.
+		colI, rowOff := 0, 0
+		queue := []string{eid}
+		for len(queue) > 0 {
+			cur := queue[0]
+			queue = queue[1:]
+			if !errOnly[cur] {
+				continue
+			}
 			if _, placed := coords[cur]; placed {
-				break
+				continue
 			}
 			cn := g.byID[cur]
 			circ := isCircle(cn)
@@ -678,16 +689,29 @@ func (e *layoutEngine) layout(nodes []map[string]interface{}) map[string]lpoint 
 				off = layCircleXOffset
 			}
 			bump := 0
-			if circ && dx > 0 {
+			if circ && colI > 0 {
 				bump = 60
 			}
-			coords[cur] = lpoint{ex + dx + off, ey + bump}
+			coords[cur] = lpoint{ex + colI*layErrDX + off, ey + rowOff + bump}
 			// collapse the err-cluster nodes — more compact, per the doc
 			if !circ {
 				collapseNode(cn)
 			}
-			cur = g.primary[cur]
-			dx += layErrDX
+			var nexts []string
+			for _, v := range g.succs(cur) {
+				if errOnly[v] {
+					if _, placed := coords[v]; !placed {
+						nexts = append(nexts, v)
+					}
+				}
+			}
+			if len(nexts) == 1 {
+				colI++
+			} else if len(nexts) > 1 {
+				colI = 0
+				rowOff += layRowStep / 2
+			}
+			queue = append(queue, nexts...)
 		}
 	}
 
