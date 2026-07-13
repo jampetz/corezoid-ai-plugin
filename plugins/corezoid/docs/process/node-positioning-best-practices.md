@@ -280,6 +280,19 @@ Applying symmetry to process layouts creates visually balanced and aesthetically
 
 ```
 
+## Automatic Placement on Push
+
+New nodes may be added with placeholder coordinates `x: 0, y: 0`. On
+`push-process` the MCP server auto-places them (preserve mode): existing
+coordinates are always kept, and only the new `(0,0)` nodes are positioned near
+their graph neighbours without overlapping placed nodes. A process where every
+node is new gets a full clean layered layout.
+
+- Disable entirely with the environment variable `COREZOID_AUTOLAYOUT=off`
+  (coordinates are then written through unchanged).
+- For a full re-layout of an existing, already-placed process, use the
+  dedicated node-layout skill rather than this on-push placement.
+
 ## Related Documentation
 
 - [Converting Algorithms to Effective Processes](algorithm-to-process-guide.md)
