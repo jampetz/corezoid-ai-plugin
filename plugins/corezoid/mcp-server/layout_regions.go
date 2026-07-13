@@ -367,47 +367,85 @@ type clusterPlacement struct {
 }
 
 // nodeClusterStrip walks the owner's dedicated error cluster (its err targets
-// plus their tails within members) as a compact strip: the primary direction
-// advances right by layErrDX, a branch fan steps down by layRowStep/2 — so the
-// standard err → Condition → {Delay, Reply → Error} shape sits tight next to
-// the node it serves. Returns the placements plus the strip extent.
+// plus their tails within members) as a compact staircase hugging the owner —
+// the geometry distilled from hand-tuned production layouts: the entry sits
+// layErrDX right of the owner and slightly BELOW its row (so the link leaves
+// the row lane free), the primary chain steps down-right in small increments,
+// and a branch that loops back to the flow (the retry Delay) stacks directly
+// ABOVE its parent Condition, giving a short vertical link and a short return
+// hop. Returns the placements plus the strip extent.
 func nodeClusterStrip(g *layoutGraph, owner string, members map[string]bool) (out []clusterPlacement, w, h int) {
-	var queue []string
+	const (
+		stepX   = 150 // primary staircase advance (collapsed 48px nodes)
+		stepY   = 30
+		entryDY = 60 // below the owner's row, off the row lane
+		loopDY  = -72
+	)
 	seen := map[string]bool{}
+	type item struct {
+		id     string
+		dx, dy int
+	}
+	var queue []item
 	for _, e := range g.errors[owner] {
 		if members[e] && !seen[e] {
 			seen[e] = true
-			queue = append(queue, e)
+			queue = append(queue, item{e, layErrDX, entryDY})
 		}
 	}
-	colI, rowOff := 0, 0
-	for len(queue) > 0 {
-		cur := queue[0]
-		queue = queue[1:]
-		out = append(out, clusterPlacement{cur, (colI + 1) * layErrDX, rowOff})
-		if x := (colI+2)*layErrDX - 100; x > w {
-			w = x
-		}
-		_, bh := nodeBoxSize(g.byID[cur])
-		if b := rowOff + bh; b > h {
-			h = b
-		}
-		var nexts []string
-		for _, v := range g.succs(cur) {
-			if members[v] && !seen[v] {
-				seen[v] = true
-				nexts = append(nexts, v)
+	exitsToFlow := func(id string) bool {
+		for _, v := range g.succs(id) {
+			if !members[v] {
+				return true
 			}
 		}
-		if len(nexts) == 1 {
-			colI++
-		} else if len(nexts) > 1 {
-			colI = 0
-			rowOff += layRowStep / 2
+		return false
+	}
+	for len(queue) > 0 {
+		it := queue[0]
+		queue = queue[1:]
+		out = append(out, clusterPlacement{it.id, it.dx, it.dy})
+		if x := it.dx + 250; x > w {
+			w = x
 		}
-		queue = append(queue, nexts...)
+		_, bh := nodeBoxSize(g.byID[it.id])
+		if b := it.dy + bh; b > h {
+			h = b
+		}
+		belowOff := 110
+		for _, v := range g.succs(it.id) {
+			if !members[v] || seen[v] {
+				continue
+			}
+			seen[v] = true
+			switch {
+			case v == g.primary[it.id]:
+				queue = append(queue, item{v, it.dx + stepX, it.dy + stepY})
+			case exitsToFlow(v):
+				// the retry Delay: stacked above its Condition
+				queue = append(queue, item{v, it.dx, it.dy + loopDY})
+			default:
+				queue = append(queue, item{v, it.dx, it.dy + belowOff})
+				belowOff += 110
+			}
+		}
 	}
 	return out, w, h
+}
+
+// nodeClusterStripFromEntry is nodeClusterStrip for a cluster addressed by
+// its ENTRY node (the waterfall's multi-source clusters have no single owner).
+func nodeClusterStripFromEntry(g *layoutGraph, entry string, members map[string]bool) (out []clusterPlacement, w, h int) {
+	fake := &layoutGraph{
+		nodes:    g.nodes,
+		ids:      g.ids,
+		byID:     g.byID,
+		docIdx:   g.docIdx,
+		primary:  g.primary,
+		branches: g.branches,
+		errors:   map[string][]string{"\x00entry": {entry}},
+	}
+	return nodeClusterStrip(fake, "\x00entry", members)
 }
 
 // splitSinkOwnership partitions a region's side sinks into per-column-node
@@ -526,10 +564,9 @@ func (e *layoutEngine) layoutHybrid(nodes []map[string]interface{}) map[string]l
 			mset := map[string]bool{}
 			for _, m := range members {
 				mset[m] = true
-				n := g.byID[m]
-				if !isCircle(n) {
-					collapseNode(n)
-				}
+				// the whole dedicated cluster collapses, INCLUDING the named
+				// Error final (hand-tuned production layouts collapse it too)
+				collapseNode(g.byID[m])
 			}
 			_, w, h := nodeClusterStrip(g, owner, mset)
 			clusterExtW[owner] = w

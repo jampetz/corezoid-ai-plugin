@@ -666,52 +666,47 @@ func (e *layoutEngine) layout(nodes []map[string]interface{}) map[string]lpoint 
 			}
 			ey = maxY + layRowStep/2
 		}
-		// Walk the WHOLE cluster from its entry (BFS in edge order): the
-		// primary chain advances to the right; branch targets (the retry
-		// Delay of the standard err → IF → Delay → back loop) step DOWN
-		// under their parent instead of falling to the orphan grid far from
-		// the node they serve.
-		colI, rowOff := 0, 0
-		queue := []string{eid}
-		for len(queue) > 0 {
-			cur := queue[0]
-			queue = queue[1:]
-			if !errOnly[cur] {
+		// Place the whole cluster with the shared staircase geometry (see
+		// nodeClusterStrip): entry right of the anchor and below the row
+		// lane, primary chain stepping down-right, the retry Delay stacked
+		// above its Condition. The whole cluster collapses, including the
+		// named Error final.
+		mset := map[string]bool{}
+		var stack2 []string
+		if errOnly[eid] {
+			stack2 = append(stack2, eid)
+		}
+		for len(stack2) > 0 {
+			u := stack2[len(stack2)-1]
+			stack2 = stack2[:len(stack2)-1]
+			if mset[u] {
 				continue
 			}
-			if _, placed := coords[cur]; placed {
+			if _, placed := coords[u]; placed {
 				continue
 			}
-			cn := g.byID[cur]
-			circ := isCircle(cn)
-			off := layCollapsedXOffset
-			if circ {
-				off = layCircleXOffset
-			}
-			bump := 0
-			if circ && colI > 0 {
-				bump = 60
-			}
-			coords[cur] = lpoint{ex + colI*layErrDX + off, ey + rowOff + bump}
-			// collapse the err-cluster nodes — more compact, per the doc
-			if !circ {
-				collapseNode(cn)
-			}
-			var nexts []string
-			for _, v := range g.succs(cur) {
+			mset[u] = true
+			for _, v := range g.succs(u) {
 				if errOnly[v] {
-					if _, placed := coords[v]; !placed {
-						nexts = append(nexts, v)
-					}
+					stack2 = append(stack2, v)
 				}
 			}
-			if len(nexts) == 1 {
-				colI++
-			} else if len(nexts) > 1 {
-				colI = 0
-				rowOff += layRowStep / 2
+		}
+		if len(mset) == 0 {
+			continue
+		}
+		// synthesize the walk from the cluster entry: nodeClusterStrip walks
+		// from an owner's err targets, so hand it a virtual owner = the first
+		// source (the entry is eid either way)
+		strip, _, _ := nodeClusterStripFromEntry(g, eid, mset)
+		for _, cp := range strip {
+			cn := g.byID[cp.id]
+			off := layCollapsedXOffset
+			if isCircle(cn) {
+				off = layCircleXOffset
 			}
-			queue = append(queue, nexts...)
+			collapseNode(cn)
+			coords[cp.id] = lpoint{ex - layErrDX + cp.dx + off, ey + cp.dy - 60}
 		}
 	}
 
