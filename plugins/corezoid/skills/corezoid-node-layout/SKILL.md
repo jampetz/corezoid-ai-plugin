@@ -39,10 +39,12 @@ not just readability:
   it — a user who is used to their arrangement must not find it rearranged.
 
 - **When you add nodes to someone else's process** (an edit, not a rebuild):
-  place only the *new* nodes sensibly next to their neighbours and leave every
-  existing node where it was. Do **not** run the whole-process auto-layout —
-  that repositions everything. Full re-layout on a foreign process happens only
-  on request.
+  leave the new nodes at `x: 0, y: 0` — `push-process` auto-places them next
+  to their graph neighbours while keeping every existing node where it was
+  (preserve mode; see node-positioning-best-practices.md § Automatic
+  Placement on Push). Do **not** run the whole-process auto-layout — that
+  repositions everything. Full re-layout on a foreign process happens only on
+  request.
 
 - **The user explicitly asks** ("tidy this up", "fix the positions", "make it
   readable" — in any language) → re-layout the whole process. This is the one
