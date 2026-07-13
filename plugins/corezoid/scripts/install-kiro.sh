@@ -101,7 +101,12 @@ run_workspace_install() {
   #    .mcp.kiro.json with the resolved absolute PLUGIN_ROOT. This keeps
   #    settings/mcp.json and the checked-in template in lock-step: the MCP
   #    command/args live in one place, and the server starts without needing
-  #    KIRO_PLUGIN_ROOT in the environment.
+  #    KIRO_PLUGIN_ROOT in the environment. Left "disabled": true as-is —
+  #    this mode always also runs --install-power (see dispatch below),
+  #    which registers and enables the *Power's* own MCP entry
+  #    (powers.mcpServers.power-power-corezoid-corezoid in Kiro's global
+  #    settings). Enabling this workspace-scoped entry too would start a
+  #    second, duplicate instance of the same MCP server.
   sed "s#\${KIRO_PLUGIN_ROOT:-\$PWD}#$PLUGIN_ROOT#" \
     "$PLUGIN_ROOT/.mcp.kiro.json" > "$KIRO_DIR/settings/mcp.json"
 
@@ -374,10 +379,48 @@ with open(path, "w") as f:
     f.write("\n")
 PYEOF
 
+  # 3) Enable the power's MCP server in ~/.kiro/settings/mcp.json
+  #    Key format: power-<power-folder-name>-<server-name-in-mcp.json>
+  MCP_CONFIG="$HOME/.kiro/settings/mcp.json"
+  POWER_MCP_KEY="power-power-corezoid-corezoid"
+
+  if [ -f "$MCP_CONFIG" ]; then
+    python3 - "$MCP_CONFIG" "$POWER_MCP_KEY" "$DEST/mcp.json" << 'PYEOF'
+import json
+import sys
+
+mcp_path, power_key, power_mcp_path = sys.argv[1], sys.argv[2], sys.argv[3]
+
+with open(mcp_path) as f:
+    mcp = json.load(f)
+
+with open(power_mcp_path) as f:
+    power_mcp = json.load(f)
+
+# Extract the server config from the power's mcp.json
+server_cfg = power_mcp.get("mcpServers", {}).get("corezoid", {})
+server_cfg.pop("disabled", None)
+server_cfg["disabled"] = False
+
+# Ensure powers.mcpServers section exists
+mcp.setdefault("powers", {}).setdefault("mcpServers", {})
+mcp["powers"]["mcpServers"][power_key] = server_cfg
+
+with open(mcp_path, "w") as f:
+    json.dump(mcp, f, indent=2)
+    f.write("\n")
+PYEOF
+    echo "✓ Power MCP server enabled: $POWER_MCP_KEY"
+  else
+    echo "⚠ $MCP_CONFIG not found — Kiro will generate it on first launch."
+    echo "  You may need to manually enable the power's MCP server."
+  fi
+
   echo ""
   echo "✓ Installed corezoid Power directly into Kiro"
   echo "  Bundle:     $DEST"
   echo "  Registered: $INSTALLED_JSON"
+  echo "  MCP key:    $POWER_MCP_KEY (enabled)"
   echo ""
   echo "  Restart Kiro (or reload window) to pick it up."
 }

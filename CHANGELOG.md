@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.8.4]
+
+- Feat: `.mcp.kiro.json` now ships with `"disabled": true`; `install-kiro.sh --install-power` writes the Power's own MCP entry into Kiro's global `~/.kiro/settings/mcp.json` under `powers.mcpServers.power-power-corezoid-corezoid` (matching the key convention Kiro itself uses) and force-enables it there, since that's the entry Kiro actually runs for an installed Power.
+- Docs: explain in `run_workspace_install` why the workspace-scoped `mcpServers.corezoid` entry intentionally stays disabled — this mode always also runs `--install-power`, so enabling both would start two instances of the same MCP server.
+
 ## [2.8.3]
 
 - Feat: `install-kiro.sh --install-power` — build the Power bundle and install it directly into this machine's local Kiro (`~/.kiro/powers/installed/power-corezoid/`, registered in `~/.kiro/powers/installed.json` via a safe `python3` JSON merge), bypassing the Powers panel's "Import from folder" UI.
