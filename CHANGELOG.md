@@ -1,5 +1,9 @@
 # Changelog
 
+## [Unreleased]
+
+- Feat: code-enforced node placement on `push-process` — new nodes added with placeholder coordinates (`x: 0, y: 0`) are auto-placed by the MCP server. Preserve mode is the default: already-placed nodes are never moved, only the new `(0,0)` nodes are slotted near their graph neighbours without overlap; a fully-new process gets a clean layered layout. Disable with the environment variable `COREZOID_AUTOLAYOUT=off`.
+
 ## [2.8.0]
 
 - Feat: process snapshots — new MCP handlers (`create-snapshot`, `list-snapshots`, `restore-snapshot`) and an auto-snapshot taken before every `push-process`; snapshot titles include a timestamp and the `.env` write notice is surfaced back to the user.

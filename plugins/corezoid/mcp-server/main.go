@@ -552,6 +552,13 @@ func fixStruct(dataBin string, inProcessID int) (string, []string) {
 		}
 	}
 
+	// Auto-place NEW nodes (x==0 && y==0) before serialising. schemeMap aliases
+	// data["scheme"], so mutating it persists into the marshaled output.
+	if schemeMap != nil {
+		convType, _ := data["conv_type"].(string)
+		messages = append(messages, applyLayout(schemeMap, convType)...)
+	}
+
 	dataRspBin, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		return dataBin, messages
