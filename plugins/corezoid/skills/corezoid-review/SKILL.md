@@ -251,6 +251,10 @@ graph TD
 N direct dependencies, N total processes mapped.
 ```
 
+> For a deeper, multi-level view — a recursive crawl of the full dependency
+> tree (not just 1 level) rendered as a zoomable, searchable interactive graph
+> — optionally run `/corezoid-dependency-graph` on this process.
+
 ---
 
 ## Step 13: Generate Report

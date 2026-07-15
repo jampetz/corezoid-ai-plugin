@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Corezoid Dependency Graph</title>
+<script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0d1117;color:#c9d1d9}
+#header{padding:12px 20px;background:#161b22;border-bottom:1px solid #30363d;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+#header h1{font-size:17px;font-weight:600}
+#header .badge{background:#238636;color:#fff;padding:2px 8px;border-radius:12px;font-size:12px;display:none}
+#header .stats{margin-left:auto;font-size:13px;color:#8b949e}
+#controls{padding:8px 20px;background:#161b22;border-bottom:1px solid #30363d;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+#controls label{font-size:13px;color:#8b949e}
+#controls select,#controls input[type=text]{background:#0d1117;border:1px solid #30363d;color:#c9d1d9;padding:4px 8px;border-radius:6px;font-size:13px}
+#controls input[type=text]{width:180px}
+#controls button{background:#21262d;border:1px solid #30363d;color:#c9d1d9;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:13px}
+#controls button:hover{background:#30363d}
+#controls .file-label{cursor:pointer;color:#58a6ff;font-size:13px}
+#controls .file-label:hover{text-decoration:underline}
+#controls .file-label input{display:none}
+#drop-zone{display:none;position:fixed;inset:0;background:rgba(13,17,23,0.92);z-index:100;justify-content:center;align-items:center;font-size:20px;color:#58a6ff;border:3px dashed #30363d}
+#graph{width:100%;height:calc(100vh - 130px)}
+#loader{display:flex;justify-content:center;align-items:center;height:calc(100vh - 130px);color:#8b949e;font-size:14px;flex-direction:column;gap:12px}
+#loader .hint{font-size:12px;color:#484f58;max-width:520px;text-align:center}
+#legend{position:absolute;bottom:16px;left:16px;background:#161b22;border:1px solid #30363d;border-radius:8px;padding:12px;font-size:12px;display:none;z-index:10}
+.legend-item{display:flex;align-items:center;gap:8px;margin:4px 0}
+.legend-dot{width:12px;height:12px;border-radius:50%}
+.legend-size{display:flex;align-items:center;gap:4px;margin-top:8px;padding-top:8px;border-top:1px solid #30363d;color:#8b949e}
+.legend-size .dot{border-radius:50%;background:#8b949e;display:inline-block}
+#tooltip{position:absolute;background:#1c2128;border:1px solid #30363d;border-radius:8px;padding:12px;font-size:13px;pointer-events:none;display:none;z-index:20;max-width:320px;box-shadow:0 4px 12px rgba(0,0,0,0.5)}
+#tooltip .tt-title{font-weight:600;color:#58a6ff;margin-bottom:2px}
+#tooltip .tt-alias{color:#3fb950;font-size:12px;margin-bottom:4px}
+#tooltip .tt-row{display:flex;justify-content:space-between;gap:16px;margin-top:2px}
+#tooltip .tt-label{color:#8b949e}
+#tooltip .tt-highlight{color:#e3b341;font-weight:600}
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h1 id="title">Corezoid Dependency Graph</h1>
+  <span class="badge" id="badge"></span>
+  <span class="stats" id="stats"></span>
+</div>
+
+<div id="controls">
+  <label>Depth:</label>
+  <select id="depthFilter" disabled>
+    <option value="0">All levels</option>
+    <option value="1">Level 1 (direct)</option>
+    <option value="2">Level 2</option>
+    <option value="3">Level 3</option>
+    <option value="4">Level 4</option>
+    <option value="5">Level 5</option>
+  </select>
+  <label>Search:</label>
+  <input type="text" id="search" placeholder="Filter by name, alias, or ID…" disabled />
+  <label>Color:</label>
+  <select id="colorMode" disabled>
+    <option value="depth">By depth level</option>
+    <option value="type">By alias / type</option>
+  </select>
+  <label>Size:</label>
+  <select id="sizeMode" disabled>
+    <option value="nodecount">By node count</option>
+    <option value="references">By references</option>
+  </select>
+  <button id="resetBtn" disabled>Reset View</button>
+  <label class="file-label">📂 Load JSON<input type="file" id="file-input" accept=".json"></label>
+</div>
+
+<div id="drop-zone">Drop dependency graph JSON here</div>
+<div id="loader">
+  <span>Load a dependency graph JSON file</span>
+  <span class="hint">Drag &amp; drop anywhere, or click "Load JSON" above. Size mode "By node count" sizes each dot by that process's own complexity; "By references" sizes it by how many other processes call it (conv_id or @alias — both count the same), so the biggest dots become your most depended-upon processes.</span>
+</div>
+<div id="graph" style="display:none"></div>
+
+<div id="legend"></div>
+<div id="tooltip">
+  <div class="tt-title"></div>
+  <div class="tt-alias"></div>
+  <div class="tt-detail"></div>
+</div>
+
+<script>
+(function(){
+  const graphEl=document.getElementById('graph'),loaderEl=document.getElementById('loader'),
+    legendEl=document.getElementById('legend'),titleEl=document.getElementById('title'),
+    badgeEl=document.getElementById('badge'),statsEl=document.getElementById('stats'),
+    tooltip=document.getElementById('tooltip'),dropZone=document.getElementById('drop-zone'),
+    fileInput=document.getElementById('file-input'),depthSel=document.getElementById('depthFilter'),
+    searchInput=document.getElementById('search'),colorSel=document.getElementById('colorMode'),
+    sizeSel=document.getElementById('sizeMode'),resetBtn=document.getElementById('resetBtn');
+
+  let network=null,allNodes=null,allEdges=null,rawData=null,levels={},rootId=null,maxDepth=0,inDegree={};
+
+  /* ── BFS level assignment ── */
+  function computeLevels(data){
+    levels={};
+    const nodeIds=new Set(data.nodes.map(n=>n.id));
+    const queue=[{id:rootId,level:0}];
+    const visited=new Set();
+    while(queue.length){
+      const{id,level}=queue.shift();
+      if(visited.has(id))continue;
+      visited.add(id);
+      levels[id]=level;
+      data.edges.filter(e=>e.from===id).forEach(e=>{
+        if(nodeIds.has(e.to)&&!visited.has(e.to)) queue.push({id:e.to,level:level+1});
+      });
+    }
+    maxDepth=Math.max(0,...Object.values(levels));
+  }
+
+  /* ── Fan-in (reference) count — how many edges point AT this node.
+     An edge already represents one caller → one target regardless of
+     whether that caller used a numeric conv_id or an @alias, so this
+     already combines "referenced by process id or alias name". ── */
+  function computeInDegree(data){
+    inDegree={};
+    data.edges.forEach(e=>{ inDegree[e.to]=(inDegree[e.to]||0)+1; });
+  }
+
+  /* ── Color schemes ── */
+  const depthColors=['#f97583','#58a6ff','#3fb950','#d2a8ff','#e3b341','#8b949e'];
+  function colorByDepth(n){
+    const l=levels[n.id]||0;
+    return depthColors[Math.min(l,depthColors.length-1)];
+  }
+  function colorByType(n){
+    if(n.id===rootId)return'#f97583';
+    if(n.nodeCount<=2)return'#d2a8ff';
+    if(!n.hasAlias)return'#e3b341';
+    return'#58a6ff';
+  }
+  function getNodeColor(n){
+    return colorSel.value==='depth'?colorByDepth(n):colorByType(n);
+  }
+  function borderFor(bg){
+    return bg+'cc';
+  }
+
+  /* ── Node sizing — two modes ──
+     "nodecount": that process's own internal complexity.
+     "references": fan-in — how many other processes call it. Buckets
+     calibrated against a real 469-node/805-edge production graph: 224
+     nodes never referenced, 137 referenced once, a long tail up to a
+     true hub referenced 61 times — so the top bucket is deliberately wide. */
+  function getSize(n){
+    if(sizeSel.value==='references'){
+      const refs=inDegree[n.id]||0;
+      if(refs===0)return 8;if(refs===1)return 12;if(refs<=3)return 18;
+      if(refs<=6)return 26;if(refs<=12)return 34;if(refs<=25)return 44;return 56;
+    }
+    if(n.nodeCount===0)return 8;if(n.nodeCount<=2)return 10;if(n.nodeCount<=20)return 16;
+    if(n.nodeCount<=50)return 22;if(n.nodeCount<=100)return 30;if(n.nodeCount<=200)return 38;return 48;
+  }
+
+  /* ── Legend ── */
+  function updateLegend(){
+    let html='';
+    if(colorSel.value==='depth'){
+      const labels=['Root','Level 1','Level 2','Level 3','Level 4','Level 5+'];
+      for(let i=0;i<=Math.min(maxDepth,5);i++){
+        html+='<div class="legend-item"><div class="legend-dot" style="background:'+depthColors[i]+'"></div> '+labels[i]+'</div>';
+      }
+    }else{
+      html+='<div class="legend-item"><div class="legend-dot" style="background:#f97583"></div> Root</div>';
+      html+='<div class="legend-item"><div class="legend-dot" style="background:#58a6ff"></div> Has alias</div>';
+      html+='<div class="legend-item"><div class="legend-dot" style="background:#e3b341"></div> No alias</div>';
+      html+='<div class="legend-item"><div class="legend-dot" style="background:#d2a8ff"></div> Config (≤2 nodes)</div>';
+    }
+    if(sizeSel.value==='references'){
+      html+='<div class="legend-size"><div class="dot" style="width:8px;height:8px"></div> 0 refs';
+      html+='&nbsp;&nbsp;<div class="dot" style="width:18px;height:18px"></div> a few';
+      html+='&nbsp;&nbsp;<div class="dot" style="width:34px;height:34px"></div> many';
+      html+='&nbsp;&nbsp;<div class="dot" style="width:56px;height:56px"></div> hub = times referenced</div>';
+    }else{
+      html+='<div class="legend-size"><div class="dot" style="width:8px;height:8px"></div> small';
+      html+='&nbsp;&nbsp;<div class="dot" style="width:16px;height:16px"></div> med';
+      html+='&nbsp;&nbsp;<div class="dot" style="width:24px;height:24px"></div> large = node count</div>';
+    }
+    legendEl.innerHTML=html;
+  }
+
+  /* ── Build vis datasets from filtered data ── */
+  function buildVisData(nodeList,edgeList){
+    const nodeSet=new Set(nodeList.map(n=>n.id));
+    const filteredEdges=edgeList.filter(e=>nodeSet.has(e.from)&&nodeSet.has(e.to));
+    const vNodes=nodeList.map(n=>{
+      const bg=getNodeColor(n),sz=getSize(n);
+      const lbl=n.hasAlias?n.label:n.label.length>25?n.label.substring(0,23)+'…':n.label;
+      return{id:n.id,label:lbl,size:sz,shape:'dot',
+        color:{background:bg,border:borderFor(bg),highlight:{background:bg,border:'#fff'}},
+        font:{color:'#e0e0e0',size:Math.max(9,Math.min(14,sz*0.4)),face:'-apple-system,sans-serif'},
+        _data:n};
+    });
+    const vEdges=filteredEdges.map((e,i)=>({id:i,from:e.from,to:e.to,arrows:'to',
+      color:{color:'#30363d',highlight:'#58a6ff',opacity:0.6},width:1,
+      smooth:{type:'continuous',roundness:0.2}}));
+    return{vNodes,vEdges,filteredEdges};
+  }
+
+  /* ── Render ── */
+  function render(data){
+    rawData=data;
+    rootId=data.rootPid||(data.nodes[0]&&data.nodes[0].id);
+    computeLevels(data);
+    computeInDegree(data);
+
+    loaderEl.style.display='none';graphEl.style.display='block';legendEl.style.display='block';
+    [depthSel,searchInput,colorSel,sizeSel,resetBtn].forEach(el=>el.disabled=false);
+
+    titleEl.textContent='Dependency Graph: '+(data.rootTitle||rootId);
+    badgeEl.textContent=rootId;badgeEl.style.display='inline';
+
+    const total=data.nodes.reduce((s,n)=>s+n.nodeCount,0);
+    const mostReferenced=data.nodes.reduce((best,n)=>{
+      const refs=inDegree[n.id]||0;
+      return refs>(inDegree[best&&best.id]||0)?n:best;
+    },null);
+    statsEl.textContent=data.nodes.length+' processes · '+data.edges.length+' edges · '+total+' total nodes · depth '+maxDepth
+      +(mostReferenced&&inDegree[mostReferenced.id]?' · top dependency: '+mostReferenced.title+' ('+inDegree[mostReferenced.id]+' refs)':'');
+
+    applyFilters();
+  }
+
+  function applyFilters(){
+    if(!rawData)return;
+    const maxD=parseInt(depthSel.value);
+    const q=searchInput.value.toLowerCase().trim();
+
+    let filtered=rawData.nodes;
+    if(maxD>0) filtered=filtered.filter(n=>(levels[n.id]||0)<=maxD);
+    if(q) filtered=filtered.filter(n=>
+      n.title.toLowerCase().includes(q)||n.label.toLowerCase().includes(q)||String(n.id).includes(q));
+    // always include root
+    if(!filtered.find(n=>n.id===rootId)){
+      const root=rawData.nodes.find(n=>n.id===rootId);
+      if(root)filtered=[root,...filtered];
+    }
+
+    const{vNodes,vEdges,filteredEdges}=buildVisData(filtered,rawData.edges);
+    allNodes=new vis.DataSet(vNodes);
+    allEdges=new vis.DataSet(vEdges);
+
+    if(network){network.destroy();network=null;}
+
+    const options={
+      physics:{solver:'forceAtlas2Based',forceAtlas2Based:{gravitationalConstant:-80,centralGravity:0.008,
+        springLength:150,springConstant:0.02,damping:0.5},stabilization:{iterations:300,fit:true},maxVelocity:30},
+      interaction:{hover:true,tooltipDelay:0,zoomView:true,dragView:true,navigationButtons:false},
+      layout:{improvedLayout:filtered.length<200}
+    };
+    network=new vis.Network(graphEl,{nodes:allNodes,edges:allEdges},options);
+
+    network.on('hoverNode',function(params){
+      const node=allNodes.get(params.node);if(!node)return;
+      const d=node._data,edges=allEdges.get();
+      const out=edges.filter(e=>e.from===d.id).length;
+      const inc=edges.filter(e=>e.to===d.id).length;
+      tooltip.querySelector('.tt-title').textContent=d.title+' ('+d.id+')';
+      tooltip.querySelector('.tt-alias').textContent=d.hasAlias?'@'+d.label.replace(/^@/,''):'';
+      tooltip.querySelector('.tt-detail').innerHTML=
+        '<div class="tt-row"><span class="tt-label">Nodes</span><span>'+d.nodeCount+'</span></div>'+
+        '<div class="tt-row"><span class="tt-label">Depth</span><span>'+(levels[d.id]||0)+'</span></div>'+
+        '<div class="tt-row"><span class="tt-label">Calls out</span><span>'+out+'</span></div>'+
+        '<div class="tt-row"><span class="tt-label">Called by</span><span class="tt-highlight">'+inc+'</span></div>'+
+        (d.hasAlias?'':'<div style="color:#e3b341;margin-top:4px;font-size:11px">⚠ No alias</div>');
+      tooltip.style.display='block';
+    });
+    network.on('blurNode',function(){tooltip.style.display='none'});
+    graphEl.addEventListener('mousemove',function(e){
+      tooltip.style.left=(e.pageX+15)+'px';tooltip.style.top=(e.pageY+15)+'px';
+    });
+    network.once('stabilizationIterationsDone',function(){network.fit({animation:{duration:500}})});
+    updateLegend();
+  }
+
+  /* ── Controls ── */
+  depthSel.addEventListener('change',applyFilters);
+  searchInput.addEventListener('input',applyFilters);
+  colorSel.addEventListener('change',applyFilters);
+  sizeSel.addEventListener('change',applyFilters);
+  resetBtn.addEventListener('click',function(){
+    depthSel.value='0';searchInput.value='';colorSel.value='depth';sizeSel.value='nodecount';
+    applyFilters();
+  });
+
+  /* ── File loading ── */
+  function handleFile(file){
+    if(!file)return;
+    const reader=new FileReader();
+    reader.onload=function(e){
+      try{render(JSON.parse(e.target.result))}
+      catch(err){alert('Invalid JSON: '+err.message)}
+    };
+    reader.readAsText(file);
+  }
+  fileInput.addEventListener('change',function(e){handleFile(e.target.files[0])});
+  document.addEventListener('dragover',function(e){e.preventDefault();dropZone.style.display='flex'});
+  document.addEventListener('dragleave',function(e){if(e.relatedTarget===null)dropZone.style.display='none'});
+  document.addEventListener('drop',function(e){e.preventDefault();dropZone.style.display='none';handleFile(e.dataTransfer.files[0])});
+})();
+</script>
+</body>
+</html>

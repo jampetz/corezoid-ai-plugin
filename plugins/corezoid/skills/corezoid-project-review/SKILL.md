@@ -85,6 +85,12 @@ Flag:
 - ⚠️ **High fan-out** — calls > 7 other processes (coupling risk)
 - ℹ️ **External calls** — `conv_id` values pointing outside the project inventory
 
+> This graph is scoped to the current project inventory. For an interactive,
+> zoomable view of the same whole-stage graph (built in one pass from the
+> already-pulled local files, external references flagged separately), or a
+> recursive cross-project crawl from one specific process, optionally run
+> `/corezoid-dependency-graph` (Stage-Wide Mode or Single-Process Mode).
+
 ### Step 2.2: Duplicate Logic Across Processes
 
 - Two processes with identical or >80% similar `api_code` nodes → candidate for shared subprocess
