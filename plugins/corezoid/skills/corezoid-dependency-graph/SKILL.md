@@ -10,7 +10,10 @@ description: >
   size modes selectable in the viewer itself: by node count (internal
   complexity) or by reference count / fan-in (how many other processes call
   it, by numeric conv_id or @alias alike) to surface the biggest dependencies
-  at a glance. Use as an optional deeper dive after /corezoid-review or
+  at a glance. Ships a second viewer with continuous, data-relative sizing
+  (exponentially scaled from the min/max actually on screen, up to ~140px)
+  for when the fixed-bucket viewer's size differences are too subtle to see.
+  Use as an optional deeper dive after /corezoid-review or
   /corezoid-project-review. Activate when the user says "dependency graph",
   "map all dependencies", "full dependency tree", "recursive dependency
   crawl", "interactive graph", "visualize dependencies", "show everything
