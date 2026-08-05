@@ -25,15 +25,19 @@ const (
 	gridSnap  = 20  // grid the final coordinates snap to
 	spineX    = 600 // x of column 0 (the spine)
 	startOff  = 100 // extra x to centre a Start/End circle over the spine
+
+	// maxEngineLayoutNodes bounds the from-scratch push layout: at or above this
+	// size push falls back to the lean baseLayout grid instead of the full
+	// engine, so the automatic push path never spends the engine's O(n^2)
+	// overlap resolution on a very large new process. layout-process (invoked
+	// explicitly, where the user can wait) still runs the engine at any size.
+	maxEngineLayoutNodes = 250
 )
 
-// Fixed node footprints (px). Start/End render as a small circle with a CENTER
-// pivot; every other node is a 200x150 box with a TOP-LEFT pivot.
-const (
-	circleSize = 56.0
-	logicW     = 200.0
-	logicH     = 150.0
-)
+// circleSize is the fixed Start/End circle footprint (px, CENTER pivot). Every
+// other node's footprint comes from nodeBoxSize (layout_graph.go) — width is
+// fixed at 200 but height depends on content, see estimatedExpandedHeight.
+const circleSize = 56.0
 
 // edge is a directed connection between two nodes. kind is one of "primary"
 // (go / logic fall-through), "cond" (go_if_const), "error" (err_node_id),
@@ -55,7 +59,7 @@ func roleOf(n map[string]interface{}) string {
 	if n == nil {
 		return "LOGIC"
 	}
-	switch ot, _ := n["obj_type"].(float64); ot {
+	switch nodeObjType(n) {
 	case 1:
 		return "START"
 	case 2:
@@ -112,9 +116,11 @@ func snap(v float64, grid int) int {
 	return int(math.Round(v/float64(grid))) * grid
 }
 
-// rectOf returns the axis-aligned box (x, y, w, h) in top-left form for a node,
-// using FIXED footprints: Start/End are 56x56 circles (center pivot), all other
-// nodes are 200x150 boxes (top-left pivot).
+// rectOf returns the axis-aligned box (x, y, w, h) in top-left form for a
+// node: Start/End are 56x56 circles (center pivot); every other node uses its
+// real content-aware footprint (nodeBoxSize, top-left pivot) — collapsed,
+// expanded-with-branches, expanded-with-a-wrapped-title, etc. all get a
+// differently sized box instead of one fixed 200x150 guess.
 func rectOf(n map[string]interface{}) [4]float64 {
 	x, _ := n["x"].(float64)
 	y, _ := n["y"].(float64)
@@ -122,7 +128,8 @@ func rectOf(n map[string]interface{}) [4]float64 {
 	case "START", "END":
 		return [4]float64{x - circleSize/2, y - circleSize/2, circleSize, circleSize}
 	default:
-		return [4]float64{x, y, logicW, logicH}
+		w, h := nodeBoxSize(n)
+		return [4]float64{x, y, float64(w), float64(h)}
 	}
 }
 
@@ -457,13 +464,18 @@ func placeNewNodes(nodes []map[string]interface{}) []string {
 	type xy struct{ x, y int }
 	placed := map[string]xy{}
 	var placedRects [][4]float64
-	// rectAt builds nd's footprint at (x,y) preserving its role (obj_type).
+	// rectAt builds nd's footprint at (x,y): a shallow copy of nd with just the
+	// coordinate overridden, so rectOf sees the real condition/title/extra and
+	// returns the node's actual content-driven footprint (nodeBoxSize) — not
+	// just its obj_type at a minimal default size.
 	rectAt := func(nd map[string]interface{}, x, y int) [4]float64 {
-		return rectOf(map[string]interface{}{
-			"obj_type": nd["obj_type"],
-			"x":        float64(x),
-			"y":        float64(y),
-		})
+		cp := make(map[string]interface{}, len(nd)+2)
+		for k, v := range nd {
+			cp[k] = v
+		}
+		cp["x"] = float64(x)
+		cp["y"] = float64(y)
+		return rectOf(cp)
 	}
 
 	nodeByID := map[string]map[string]interface{}{}
@@ -501,15 +513,79 @@ func placeNewNodes(nodes []map[string]interface{}) []string {
 		return newIDs[i] < newIDs[j]
 	})
 
+	// descendantsOf collects every node forward-reachable from root (root
+	// included), used to shift a subtree down when inserting a node above it.
+	descendantsOf := func(root string) map[string]bool {
+		seen := map[string]bool{root: true}
+		stack := []string{root}
+		for len(stack) > 0 {
+			cur := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			for _, e := range g.edges {
+				if e.src == cur && !seen[e.dst] {
+					seen[e.dst] = true
+					stack = append(stack, e.dst)
+				}
+			}
+		}
+		return seen
+	}
+	rebuildRects := func() {
+		placedRects = placedRects[:0]
+		for pid, p := range placed {
+			placedRects = append(placedRects, rectAt(nodeByID[pid], p.x, p.y))
+		}
+	}
+	// shiftSubtreeDown opens a gap of `shift` px at minY by pushing root and its
+	// forward-reachable placed descendants at/below minY down by that amount.
+	// This is the "smooth expansion" when a node is inserted into the middle of
+	// a chain: the downstream part slides down in-style instead of the new node
+	// being nudged far away. Uniform translate — relative arrangement is
+	// preserved.
+	shiftSubtreeDown := func(root string, minY, shift int) {
+		desc := descendantsOf(root)
+		for d := range desc {
+			p, ok := placed[d]
+			if !ok || p.y < minY {
+				continue
+			}
+			p.y += shift
+			placed[d] = p
+			if nd := nodeByID[d]; nd != nil {
+				nd["x"] = float64(p.x)
+				nd["y"] = float64(p.y)
+			}
+		}
+		rebuildRects()
+	}
+
+	// insertionShift is how far shiftSubtreeDown must open the gap for nd: the
+	// platform's usual vStep row rhythm, or more if nd's own real
+	// content-driven height (many condition rows, several output branches, a
+	// wrapped title — see estimatedExpandedHeight) wouldn't fit in that rhythm.
+	// margin mirrors the breathing room a plain node already gets at vStep (a
+	// ~90px LOGIC-role box leaves 110px of air below it before the next row);
+	// without this, a tall inserted node would open only a flat 200px gap and
+	// overlap the very neighbour shiftSubtreeDown just moved.
+	insertionShift := func(nd map[string]interface{}) int {
+		const margin = 50
+		_, h := nodeBoxSize(nd)
+		if need := h + margin; need > vStep {
+			return snap(float64(need), gridSnap)
+		}
+		return vStep
+	}
+
 	var notes []string
 	for _, id := range newIDs {
 		var target xy
 		set := false
+		insertBelowParent := false
 		// 1. primary down-child of a placed parent -> below the parent.
 		for _, s := range parents[id] {
 			if dt[s] == id {
 				if pp, ok := placed[s]; ok {
-					target, set = xy{pp.x, pp.y + vStep}, true
+					target, set, insertBelowParent = xy{pp.x, pp.y + vStep}, true, true
 					break
 				}
 			}
@@ -537,8 +613,22 @@ func placeNewNodes(nodes []map[string]interface{}) []string {
 		}
 
 		target = xy{snap(float64(target.x), gridSnap), snap(float64(target.y), gridSnap)}
-
 		nd := nodeByID[id]
+
+		// Smooth expansion: when inserting a node directly above its own placed
+		// down-child (a real "add a step in the chain"), push that child and its
+		// downstream subtree down to open a gap sized to the new node's real
+		// height, instead of nudging the new node far below. Only the new node's
+		// own descendants at/below the slot move, so unrelated/parallel nodes
+		// stay put (incidental overlaps still nudge).
+		if insertBelowParent {
+			if c := dt[id]; c != "" {
+				if cp, ok := placed[c]; ok && cp.y == target.y {
+					shiftSubtreeDown(c, target.y, insertionShift(nd))
+				}
+			}
+		}
+
 		intersectsPlaced := func(x, y int) bool {
 			cand := rectAt(nd, x, y)
 			for _, r := range placedRects {
@@ -618,7 +708,27 @@ func applyLayout(scheme map[string]interface{}, convType string) []string {
 		}
 	}
 	if allNew {
-		baseLayout(nodes)
+		// From-scratch process: use the full layout engine (the same waterfall /
+		// layered+error-rail / regions strategies the layout-process tool uses)
+		// rather than the lean baseLayout grid, so a new process gets a clean,
+		// readable default instead of a cramped one. computeLayout also sets the
+		// extra.modeForm collapse flags. This is the "place-new-nodes push hook"
+		// seam the engine was written for (see layout_engine.go).
+		// Use the full engine up to a bounded size; a very large new process
+		// falls back to the lean grid so push stays fast (see maxEngineLayoutNodes).
+		if len(nodes) <= maxEngineLayoutNodes {
+			e := &layoutEngine{density: "medium"}
+			if coords, rep := e.computeLayout(nodes); len(coords) > 0 {
+				for _, n := range nodes {
+					if p, ok := coords[nodeStr(n, "id")]; ok {
+						n["x"] = float64(p.X)
+						n["y"] = float64(p.Y)
+					}
+				}
+				return []string{fmt.Sprintf("layout: %s, positioned %d node(s)", rep.Strategy, len(nodes))}
+			}
+		}
+		baseLayout(nodes) // lean grid: engine unavailable/too large
 		return []string{fmt.Sprintf("layout: positioned %d new nodes", len(nodes))}
 	}
 	return placeNewNodes(nodes)

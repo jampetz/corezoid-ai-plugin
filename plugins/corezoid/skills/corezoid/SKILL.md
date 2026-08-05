@@ -54,6 +54,10 @@ You have access to the Corezoid API via the `corezoid` MCP server.
 | `list-snapshots` | List all snapshots for a process |
 | `delete-snapshot` | Delete a snapshot by snapshot_id |
 | `get-snapshot` | Get snapshot node list for diff comparison against current process |
+| `git-pull-context` | Clone or pull the Corezoid git mirror into `.git-context/` |
+| `git-push-context` | Commit and push `_ext/` changes to the git mirror |
+| `read-context-file` | Read a file from `.git-context/` |
+| `update-context-file` | Write or append to a file inside `_ext/` |
 
 ## Platform Architecture
 
@@ -83,10 +87,10 @@ Workspace
 | Start | 1 | `go` | Entry point |
 | Code Node | 0 | `api_code` | JS/Erlang code execution |
 | API Call | 0 | `api` | External HTTP request |
-| Call a Process | 0 | `api_rpc` | Invoke another process |
+| Call a Process | 0 (`4` when Stub Mode is active) | `api_rpc` | Invoke another process; Stub Mode returns configured mock replies instead |
 | Set Parameters | 0 | `set_param` | Variable assignment |
-| Condition | 0 | `go_if_const` | Branching logic |
-| Reply to Process | 0 | `api_rpc_reply` | Return result to caller |
+| Condition | 0 | `go_if_const` | Branching logic (business flow; `3` when it is an `err_node_id` target) |
+| Reply to Process | 0 | `api_rpc_reply` | Return result to caller (`3` when it is an `err_node_id` target) |
 | End / Error | 2 | _(none)_ | Terminal node |
 
 ## Key Validation Rules
@@ -96,6 +100,9 @@ Workspace
 - All constants (URLs, tokens, IDs) must use `{{env_var[@variable-name]}}` — never hardcoded
 - `extra` and `extra_type` keys must match exactly
 - Object values in `extra` must be stringified JSON strings
+- Active Call Process Stub Mode is `obj_type: 4` plus `condition.stub`; `obj_type: 0` with the same `condition.stub` is inactive and calls the real target process.
+- Use Stub Mode only as a temporary placeholder while the called process is not ready, or as a controlled integration-test fixture. It bypasses the real called process and can hide side effects or fake success in production.
+- `push-process` treats active Stub Mode as warning-only on a resolved mutable non-production-like stage, but blocks immutable, production-like, or unknown stages unless `allow_active_stub_mode=true` is passed after explicit confirmation.
 
 ## Common Operations
 
@@ -130,7 +137,6 @@ For domain-specific workflows use the specialized skills:
 - `/corezoid-review` — auditing and analyzing a single process
 - `/corezoid-project-review` — auditing an entire project or folder (cross-process analysis)
 - `/corezoid-dependency-graph` — recursive multi-level dependency crawl + interactive HTML visualization (optional deeper dive after `/corezoid-review` or `/corezoid-project-review`)
-- `/corezoid-stage-scan` — pre-merge/pre-deploy static check of exported stage `.zip`s: non-active processes, empty/battered processes, broken node links, broken/inactive `conv_id` references (explains "Only active process can be used", "referenced node X does not exist", "Access user to conveyor is denied")
 - `/corezoid-dashboard-manager` — creating dashboards and charts for process metrics
 - `/corezoid-process-tech-writer` — documenting a process (Markdown + enriched JSON)
 - `/corezoid-alias-manager` — creating, listing, modifying, deleting, and using aliases
@@ -139,6 +145,7 @@ For domain-specific workflows use the specialized skills:
 - `/corezoid-api-connector` — build processes that call the Corezoid public API (`/api/2/json/`) using `api_secret_outer`
 - `/corezoid-retro` — end-of-session retrospective: extract learnings (failed→fixed push deltas, data-shape surprises, corrections) and route them to workspace CLAUDE.md, team feedback, settings, or personal memory with user confirmation
 - `/corezoid-describe` — update or create the description of a process, folder, or project without editing its logic
+- `/corezoid-git-context` — after a substantial session: analyse changes and update `_ext/docs/*.md` in the git mirror
 
 ## Reference Documents
 

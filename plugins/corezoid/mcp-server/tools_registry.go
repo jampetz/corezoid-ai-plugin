@@ -151,7 +151,7 @@ var toolRegistry = []mcpTool{
 	},
 	{
 		Name:        "push-process",
-		Description: "Validate and deploy a process file to Corezoid. Note: the server regenerates node IDs on every push and the local file is rewritten in place with the server's canonical scheme — reference nodes by title when iterating, and re-read the file after a push instead of reusing old node IDs.",
+		Description: "Validate and deploy a process file to Corezoid. Runs lint-process first and blocks the deploy on issues that would break it (broken node links, old-format nodes, RPC paths without reply, nodes missing a default go, sub-30s timers, literal reply values); advisory findings are shown but do not block. Active Call Process Stub Mode (obj_type:4) is allowed as a warning only when the target stage is resolved as mutable and non-production-like; immutable/prod/unknown stages are blocked because Stub Mode bypasses the real called process. Pass allow_active_stub_mode=true only after explicit confirmation that the temporary mock behavior is intentional. Pass force=true to deploy despite other blocking lint issues. Note: the server regenerates node IDs on every push and the local file is rewritten in place with the server's canonical scheme — reference nodes by title when iterating, and re-read the file after a push instead of reusing old node IDs.",
 		InputSchema: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -159,13 +159,21 @@ var toolRegistry = []mcpTool{
 					"type":        "string",
 					"description": "Path to the process JSON file, relative to the project root (absolute paths are accepted when they point inside the project).",
 				},
+				"force": map[string]interface{}{
+					"type":        "boolean",
+					"description": "Deploy even if the pre-push lint finds generic blocking issues. Does not confirm active Stub Mode; use allow_active_stub_mode for that. Advisory findings never block. Default false.",
+				},
+				"allow_active_stub_mode": map[string]interface{}{
+					"type":        "boolean",
+					"description": "Explicitly allow deploying active Call Process Stub Mode (obj_type:4) when the target stage is immutable, production-like, or cannot be resolved. Use only after confirming that temporary mock replies are intentionally being deployed.",
+				},
 			},
 			"required": []string{"process_path"},
 		},
 	},
 	{
 		Name:        "layout-process",
-		Description: "Auto-arrange a process's node coordinates into a clean, readable layout (waterfall for simple trees, layered+error-rail for meshes, aligned table/star grids for region bundles). Rewrites ONLY x/y and the extra.modeForm collapse flag in the file — edges, logic, conv_id and aliases stay intact, so a re-layout can never alter behaviour. Runs entirely on the local file (no API, no auth). The result always reports the chosen strategy, canvas size and overlap count; dry=true previews placements without writing.",
+		Description: "Auto-arrange a process's node coordinates into a clean, readable layout (waterfall for simple trees, layered+error-rail for meshes, aligned table/star grids for region bundles). Rewrites ONLY x/y; collapse/expand state, extra, edges, logic, conv_id and aliases stay intact. Runs entirely on the local file (no API, no auth). The result always reports the chosen strategy, canvas size and overlap count; dry=true previews placements without writing.",
 		InputSchema: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -187,7 +195,7 @@ var toolRegistry = []mcpTool{
 	},
 	{
 		Name:        "lint-process",
-		Description: "Validate process structure. Reports orphaned nodes, noop conditions, unused set_params, passthrough escalations, and literal non-string values in api_rpc_reply res_data (a scheme shape that hangs the server commit on push).",
+		Description: "Validate process structure. Reports orphaned nodes, noop conditions, unused set_params, passthrough escalations, shared error clusters (an error node fed by several different failing nodes — each needs its own Reply/Error cluster), old-format nodes (obj_type:0 err_node_id targets, or action logic mixed with go_if_const — the UI would force-convert the process), finals reachable without api_rpc_reply in a process that replies elsewhere (an RPC caller would hang), nodes whose logics do not end with a default go and time semaphors under the 30s server minimum (both reject the deploy), literal non-string values in api_rpc_reply res_data (a scheme shape that hangs the server commit on push), and active Call Process Stub Mode nodes (obj_type:4) that bypass the real called process.",
 		InputSchema: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -213,6 +221,10 @@ var toolRegistry = []mcpTool{
 					"type":        "string",
 					"description": "JSON string with task input parameters",
 				},
+				"ref": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional custom task ref (lookup key, not a guaranteed idempotency key — duplicate-ref behavior depends on the target process/state-diagram). Use this to create a task with a specific, lookup-able ref — e.g. matching an external ID a downstream process keys off of. If omitted, an auto-generated ref (\"<unix_ts>_<rand>\") is used, same as before.",
+				},
 				"wait_sec": map[string]interface{}{
 					"type":        "integer",
 					"description": "How long to wait (seconds) for the task to reach a final node before reporting it as in progress. Default 30, max 600. Raise it for processes with slow external calls or delay nodes.",
@@ -227,6 +239,10 @@ var toolRegistry = []mcpTool{
 		InputSchema: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
+				"folder_id": map[string]interface{}{
+					"type":        "integer",
+					"description": "Explicit Corezoid folder/stage ID to create in; overrides folder_path resolution",
+				},
 				"folder_path": map[string]interface{}{
 					"type":        "string",
 					"description": "Relative path to the folder directory. Omit to use the current directory.",
@@ -245,6 +261,10 @@ var toolRegistry = []mcpTool{
 		InputSchema: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
+				"folder_id": map[string]interface{}{
+					"type":        "integer",
+					"description": "Explicit Corezoid folder/stage ID to create in; overrides folder_path resolution",
+				},
 				"folder_path": map[string]interface{}{
 					"type":        "string",
 					"description": "Relative path to the folder directory. Omit to use the current directory.",
@@ -263,6 +283,10 @@ var toolRegistry = []mcpTool{
 		InputSchema: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
+				"folder_id": map[string]interface{}{
+					"type":        "integer",
+					"description": "Explicit Corezoid folder/stage ID to create the folder in; overrides parent_path resolution",
+				},
 				"parent_path": map[string]interface{}{
 					"type":        "string",
 					"description": "Relative path to the parent folder directory. Omit to use the current directory.",
@@ -355,7 +379,7 @@ var toolRegistry = []mcpTool{
 	},
 	{
 		Name:        "create-alias",
-		Description: "Create a short alias for a Corezoid process.",
+		Description: "Create a short alias for a Corezoid process. Aliases are stage-scoped; the stage is derived from the process file's parent_id (walking up folders until a stage is reached), so a stale COREZOID_STAGE_ID in .env no longer produces the cryptic \"Object is not in stage\" error. Pass stage_id explicitly to override.",
 		InputSchema: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
@@ -366,6 +390,10 @@ var toolRegistry = []mcpTool{
 				"short_name": map[string]interface{}{
 					"type":        "string",
 					"description": "Short alias name for the process",
+				},
+				"stage_id": map[string]interface{}{
+					"type":        "integer",
+					"description": "Optional. Stage the alias should be created in. Defaults to the stage derived from the process file's parent_id, then to COREZOID_STAGE_ID from .env.",
 				},
 			},
 			"required": []string{"process_path", "short_name"},
@@ -1257,6 +1285,65 @@ var toolRegistry = []mcpTool{
 				},
 			},
 			"required": []string{"process_path", "snapshot_id"},
+		},
+	},
+
+	// git mirror
+	{
+		Name:        "git-pull-context",
+		Description: "Clone or pull the Corezoid git mirror for the current workspace into .git-context/. Requires COREZOID_GIT_URL, API_LOGIN, and API_SECRET. Silently skipped if not configured.",
+		InputSchema: map[string]interface{}{
+			"type":       "object",
+			"properties": map[string]interface{}{},
+		},
+	},
+	{
+		Name:        "git-push-context",
+		Description: "Commit and push local _ext/ changes to the Corezoid git mirror. Requires API_LOGIN and API_SECRET. Returns a warning (not an error) if nothing changed.",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"commit_message": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional git commit message. Defaults to 'docs: update _ext/ after task session <timestamp>'.",
+				},
+			},
+		},
+	},
+	{
+		Name:        "read-context-file",
+		Description: "Read a file from .git-context/ of the current workspace (git mirror local copy). Returns content and a found flag.",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"path": map[string]interface{}{
+					"type":        "string",
+					"description": "Relative path inside .git-context/, e.g. projects/123_Name/stages/456_Stage/_ext/docs/context.md",
+				},
+			},
+			"required": []string{"path"},
+		},
+	},
+	{
+		Name:        "update-context-file",
+		Description: "Write or append to a file inside _ext/ of the git mirror local copy (.git-context/). Path must start with _ext/. Use git-push-context to publish the changes.",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"path": map[string]interface{}{
+					"type":        "string",
+					"description": "Relative path inside .git-context/, must start with _ext/ (e.g. _ext/docs/context.md or projects/123/stages/456/_ext/docs/context.md)",
+				},
+				"content": map[string]interface{}{
+					"type":        "string",
+					"description": "Text content to write",
+				},
+				"mode": map[string]interface{}{
+					"type":        "string",
+					"description": "Write mode: 'replace' (default) overwrites the file; 'append' adds to the end",
+				},
+			},
+			"required": []string{"path", "content"},
 		},
 	},
 }

@@ -94,18 +94,30 @@ var toolHandlers = map[string]toolHandler{
 	"list-snapshots":  handleListSnapshots,
 	"delete-snapshot": handleDeleteSnapshot,
 	"get-snapshot":    handleGetSnapshot,
+
+	// git mirror
+	"git-pull-context":    handleGitPullContext,
+	"git-push-context":    handleGitPushContext,
+	"read-context-file":   handleReadContextFile,
+	"update-context-file": handleUpdateContextFile,
 }
 
 // noAuthTools don't need any credentials. lint runs entirely on local files;
 // login/logout manage credentials themselves.
 // send-feedback must not require auth so users can report problems that
 // occurred before or during the login flow.
+// git tools use their own credential check (COREZOID_GIT_URL + API_LOGIN/SECRET)
+// rather than Corezoid API auth.
 var noAuthTools = map[string]struct{}{
-	"layout-process": {},
-	"lint-process":   {},
-	"login":          {},
-	"logout":         {},
-	"send-feedback":  {},
+	"layout-process":      {},
+	"lint-process":        {},
+	"login":               {},
+	"logout":              {},
+	"send-feedback":       {},
+	"git-pull-context":    {},
+	"git-push-context":    {},
+	"read-context-file":   {},
+	"update-context-file": {},
 }
 
 // tokenOnlyTools need an OAuth token but not a fully configured workspace or
@@ -154,7 +166,17 @@ func handleToolCall(ctx context.Context, name string, args map[string]interface{
 	}
 
 	start := time.Now()
-	result, isError = h(ctx, args)
+	// Reject arguments the tool does not declare. Unknown keys used to be
+	// silently dropped, which let a call like create-process{folder_id: N}
+	// quietly fall back to directory-based target resolution and create the
+	// process somewhere else entirely. The rejection flows through the same
+	// result/analytics path as any other tool error so it is visible in
+	// telemetry.
+	if msg := unknownArgsError(name, args); msg != "" {
+		result, isError = msg, true
+	} else {
+		result, isError = h(ctx, args)
+	}
 
 	if analyticsEnabled.Load() {
 		apiURLv, _, _, _, _ := authSnapshot()

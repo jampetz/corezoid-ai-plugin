@@ -14,9 +14,11 @@ The plugin bundles a Go MCP server that exposes Corezoid operations as MCP tools
 | `corezoid-init`                | "set up", "login", "pull workspace"      | OAuth login, workspace pull, environment setup    |
 | `corezoid-create`              | "create a process", "new process"        | Building processes from scratch                   |
 | `corezoid-edit`                | "edit", "modify", "update" a process     | Modifying existing `.conv.json` files             |
+| `corezoid-state-diagram-create` | "create state diagram", "build a state machine", "conv_type state" | Building state diagrams from scratch (`conv_type: "state"`) |
+| `corezoid-state-diagram-edit`  | "edit state diagram", "add a state", "change transitions" | Modifying existing state diagrams — states, transitions, side effects |
 | `corezoid-review`              | "review", "audit", "check" a process     | Analysis, dead code, best-practice violations     |
 | `corezoid-project-review`      | "review project", "audit folder"         | Cross-process audit of an entire folder           |
-| `corezoid-stage-scan`          | "scan stage", "check stage before merge", "why does the merge fail" | Offline pre-merge validation of exported stage `.zip`s: non-active/empty processes, broken node links, broken/inactive `conv_id` refs |
+| `corezoid-dependency-graph`    | "dependency graph", "what calls this process", "map dependencies" | Recursive multi-level dependency crawl + interactive HTML visualization |
 | `corezoid-node-layout`         | "arrange nodes", "lay out", "tidy up the diagram", "fix positions", "remove overlaps" | Auto-arrange node x/y into a clean top-to-bottom flow with error handling railed right and no overlaps (positions only) |
 | `corezoid-dashboard-manager`   | "create dashboard", "add chart", "visualize metrics" | Dashboards, charts, node metrics, real-time monitoring |
 | `corezoid-process-tech-writer` | "document", "write docs", "describe process" | Markdown docs + enriched JSON with node descriptions |
@@ -30,6 +32,7 @@ The plugin bundles a Go MCP server that exposes Corezoid operations as MCP tools
 | `corezoid-feedback`            | "report a bug", "this is broken", "send feedback" | Collect and submit bug reports / improvement requests |
 | `marketplace-publish-validation` | "publish to marketplace", "check before publish" | Pre-publication checklist for Corezoid marketplace |
 | `corezoid-gitcall`             | "git call", "gitcall", "run my code", "custom code node", "python/go/php in a process" | Custom code (Python/Go/Java/PHP/JS/…) as a git_call step — parsing, libraries, crypto, attachments; handles the container build on push |
+| `corezoid-git-context`         | after a substantial session, "update git context", "sync context" | Analyse session changes and update `_ext/docs/*.md` in the Corezoid git mirror |
 
 ## Design philosophy
 
@@ -68,7 +71,7 @@ claude plugin install corezoid@corezoid
 
 ```bash
 codex plugin marketplace add corezoid/corezoid-ai-plugin
-codex plugin install corezoid@corezoid
+codex plugin add corezoid@corezoid
 ```
 
 **Or from a local clone:**
@@ -76,7 +79,7 @@ codex plugin install corezoid@corezoid
 ```bash
 git clone https://github.com/corezoid/corezoid-ai-plugin
 codex plugin marketplace add ./corezoid-ai-plugin
-codex plugin install corezoid@corezoid
+codex plugin add corezoid@corezoid
 ```
 
 No build step, no extra setup. The MCP server starts automatically on first use.
@@ -100,8 +103,12 @@ Open the workspace in Kiro — the `corezoid` MCP server, skills, and steering a
 
 ```bash
 claude plugin update corezoid@corezoid   # Claude Code
-codex plugin update corezoid@corezoid    # Codex
+codex plugin marketplace upgrade && codex plugin add corezoid@corezoid    # Codex
 ```
+
+Codex has no `plugin update` subcommand — refresh the marketplace snapshot with
+`codex plugin marketplace upgrade` (upgrades all configured Git marketplaces; pass a
+name to target one) and re-run `codex plugin add` to install the refreshed version.
 
 ```bash
 git pull && sh plugins/corezoid/scripts/install-kiro.sh .   # AWS Kiro
@@ -272,6 +279,10 @@ validation errors, and summarize what each process does.
 | `list-snapshots`    | List all snapshots for a process with version, title, author and creation time |
 | `delete-snapshot`   | Delete a snapshot by its obj_id |
 | `get-snapshot`      | Get the node list of a specific snapshot for diff comparison |
+| `git-pull-context`  | Clone or pull the Corezoid git mirror into `.git-context/` |
+| `git-push-context`  | Commit and push `_ext/` changes to the git mirror  |
+| `read-context-file` | Read a file from `.git-context/`                   |
+| `update-context-file` | Write or append to a file inside `_ext/`         |
 
 ## Feedback
 
@@ -301,12 +312,16 @@ Claude Code / Codex
   └── corezoid MCP server (prebuilt binary)
         ├── Auth          login, logout
         ├── Workspace     list-workspaces, list-stages, list-projects,
-        │                 create-project, modify-project, delete-project, show-project
+        │                 create-project, modify-project, delete-project, show-project,
+        │                 deploy-stage, set-stage-immutable
         ├── Processes     pull-process, pull-folder, push-process, lint-process, layout-process
-        │                 create-process, create-folder, create-alias, create-variable
+        │                 create-process, create-state-diagram, create-folder,
+        │                 create-alias, create-variable,
+        │                 list-variables, modify-variable, delete-variable,
         │                 show-folder, list-folders, modify-folder, delete-folder, delete-process
-        ├── Tasks         run-task, list-node-tasks, list-task-history
+        ├── Tasks         run-task, list-node-tasks, list-task-history, get-node-stat,
         │                 modify-task, delete-task
+        ├── Snapshots     create-snapshot, list-snapshots, delete-snapshot, get-snapshot
         ├── Dashboards    create-dashboard, get-dashboard, add-chart,
         │                 modify-chart, get-chart, set-dashboard-layout
         ├── Access        share-object, list-shares,
@@ -314,6 +329,8 @@ Claude Code / Codex
         │                 add-to-group, remove-from-group, list-groups,
         │                 create-api-key, modify-api-key, delete-api-key, list-api-keys,
         │                 find-principal, invite-user
+        ├── Git context   git-pull-context, git-push-context,
+        │                 read-context-file, update-context-file
         └── Feedback      send-feedback
 ```
 
@@ -326,7 +343,7 @@ corezoid-ai-plugin/
 ├── .agents/
 │   └── plugins/
 │       └── marketplace.json     # Codex marketplace listing (points to plugins/corezoid)
-├── plugins/corezoid/            # Plugin root (CLAUDE_PLUGIN_ROOT for both Claude Code and Codex)
+├── plugins/corezoid/            # Plugin root (skill path token; MCP launcher resolves it per host)
 │   ├── .claude-plugin/
 │   │   └── plugin.json          # Claude Code plugin manifest
 │   ├── .codex-plugin/
@@ -334,14 +351,29 @@ corezoid-ai-plugin/
 │   ├── .mcp.json                # MCP server configuration
 │   ├── mcp-server/              # MCP server source
 │   ├── skills/
-│   │   ├── corezoid/                    # Universal assistant skill
-│   │   ├── corezoid-init/               # Environment setup skill
-│   │   ├── corezoid-create/             # Process creation skill
-│   │   ├── corezoid-edit/               # Process editing skill
-│   │   ├── corezoid-review/             # Process review skill
-│   │   ├── corezoid-project-review/     # Project audit skill
-│   │   ├── corezoid-dashboard-manager/  # Dashboard & chart management skill
-│   │   └── corezoid-process-tech-writer/ # Process documentation skill
+│   │   ├── corezoid/                       # Universal assistant skill
+│   │   ├── corezoid-init/                  # Environment setup skill
+│   │   ├── corezoid-create/                # Process creation skill
+│   │   ├── corezoid-edit/                  # Process editing skill
+│   │   ├── corezoid-state-diagram-create/  # State diagram creation skill
+│   │   ├── corezoid-state-diagram-edit/    # State diagram editing skill
+│   │   ├── corezoid-review/                # Process review skill
+│   │   ├── corezoid-project-review/        # Project audit skill
+│   │   ├── corezoid-dependency-graph/      # Dependency graph crawl & visualization skill
+│   │   ├── corezoid-node-layout/           # Node auto-layout skill
+│   │   ├── corezoid-dashboard-manager/     # Dashboard & chart management skill
+│   │   ├── corezoid-process-tech-writer/   # Process documentation skill
+│   │   ├── corezoid-process-optimizer/     # Process optimization skill
+│   │   ├── corezoid-describe/              # Object description skill
+│   │   ├── corezoid-alias-manager/         # Alias management skill
+│   │   ├── corezoid-variable-manager/      # Environment variable management skill
+│   │   ├── corezoid-api-connector/         # Corezoid public-API caller skill
+│   │   ├── corezoid-gitcall/               # git_call custom-code skill
+│   │   ├── corezoid-access/                # Sharing, groups, API keys skill
+│   │   ├── corezoid-retro/                 # End-of-session retrospective skill
+│   │   ├── corezoid-feedback/              # Bug / improvement reporting skill
+│   │   ├── corezoid-git-context/           # `.git-context/` mirror sync skill
+│   │   └── marketplace-publish-validation/ # Marketplace pre-publication checklist
 │   ├── docs/                    # Node and process documentation
 │   └── samples/                 # Example .conv.json processes
 ```
@@ -388,4 +420,4 @@ See [docs/Troubleshooting.md](docs/Troubleshooting.md) for solutions to common p
 
 ## License
 
-MIT
+[MIT](LICENSE)

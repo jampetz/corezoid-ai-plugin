@@ -18,6 +18,27 @@ import (
 // handlers that resolve a process ID from a file path.
 var reProcessIDFromFilename = regexp.MustCompile(`^(\d+)_`)
 
+// sanitizeFileSegment converts a raw Corezoid title into a safe filename or
+// directory-name segment. It replaces spaces AND every character that is either
+// a path separator on any supported OS or illegal in Windows filenames with an
+// underscore. This means a title like "/chat_v2" becomes "_chat_v2", which
+// matches the server-side naming that pull-folder already produces.
+//
+// Characters replaced: space  /  \  :  *  ?  "  <  >  |
+func sanitizeFileSegment(title string) string {
+	const illegal = ` /\:*?"<>|`
+	var b strings.Builder
+	b.Grow(len(title))
+	for _, r := range title {
+		if strings.ContainsRune(illegal, r) {
+			b.WriteByte('_')
+		} else {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
 // extractProcessIDFromPath returns the numeric process ID encoded in the
 // filename, or an error message describing the expected format.
 func extractProcessIDFromPath(filePath string) (int, string) {
@@ -28,6 +49,124 @@ func extractProcessIDFromPath(filePath string) (int, string) {
 	}
 	id, _ := strconv.Atoi(matches[1])
 	return id, ""
+}
+
+type stubModeStagePolicy struct {
+	requiresConfirmation bool
+	reason               string
+}
+
+func extractParentIDFromJSON(jsonContent string) int {
+	var processData map[string]interface{}
+	if err := json.Unmarshal([]byte(jsonContent), &processData); err != nil {
+		return 0
+	}
+	if f, ok := processData["parent_id"].(float64); ok {
+		return int(f)
+	}
+	if i, ok := processData["parent_id"].(int); ok {
+		return i
+	}
+	return 0
+}
+
+func resolveStageAndProjectFromFolder(v *Executor, folderID int) (stage, project int, err error) {
+	if folderID == 0 {
+		return 0, 0, fmt.Errorf("process parent_id is missing")
+	}
+	const maxDepth = 20
+	currentID := folderID
+	for i := 0; i < maxDepth; i++ {
+		info, showErr := v.ShowFolder(currentID)
+		if showErr != nil {
+			return 0, 0, fmt.Errorf("show folder %d: %w", currentID, showErr)
+		}
+		if info.ParentObjType == "project" {
+			return info.ObjID, info.ParentObjID, nil
+		}
+		if info.ParentObjID == 0 || info.ParentObjID == currentID {
+			break
+		}
+		currentID = info.ParentObjID
+	}
+	return 0, 0, fmt.Errorf("could not find stage root while walking parents from folder %d", folderID)
+}
+
+func stageNameLooksProduction(title, shortName string) bool {
+	for _, value := range []string{title, shortName} {
+		normalized := strings.ToLower(strings.TrimSpace(value))
+		for _, token := range strings.FieldsFunc(normalized, func(r rune) bool {
+			return !((r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'))
+		}) {
+			switch token {
+			case "prod", "production", "preprod":
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func stubModeStagePolicyForPush(v *Executor, jsonContent string) stubModeStagePolicy {
+	if parentID := extractParentIDFromJSON(jsonContent); parentID != 0 && v.APIUrl != "" {
+		stageID, projectID, err := resolveStageAndProjectFromFolder(v, parentID)
+		if err != nil {
+			return stubModeStagePolicy{
+				requiresConfirmation: true,
+				reason:               fmt.Sprintf("target stage could not be resolved from process parent_id %d: %v", parentID, err),
+			}
+		}
+		return stubModePolicyForStage(v, stageID, projectID)
+	}
+
+	if v.StageID == 0 {
+		return stubModeStagePolicy{
+			requiresConfirmation: true,
+			reason:               "target stage is unknown because process parent_id could not be resolved and COREZOID_STAGE_ID is not configured",
+		}
+	}
+
+	projectID := v.GetProjectIDByStageID(v.StageID)
+	if projectID == 0 {
+		return stubModeStagePolicy{
+			requiresConfirmation: true,
+			reason:               fmt.Sprintf("target stage %d could not be resolved to a project", v.StageID),
+		}
+	}
+
+	return stubModePolicyForStage(v, v.StageID, projectID)
+}
+
+func stubModePolicyForStage(v *Executor, stageID, projectID int) stubModeStagePolicy {
+	immutable, _, title, shortName, err := v.stageInfo(stageID, projectID)
+	if err != nil {
+		return stubModeStagePolicy{
+			requiresConfirmation: true,
+			reason:               fmt.Sprintf("target stage %d metadata could not be read: %v", stageID, err),
+		}
+	}
+
+	stageLabel := fmt.Sprintf("stage %d", stageID)
+	if title != "" {
+		stageLabel += fmt.Sprintf(" (%q)", title)
+	}
+	if immutable {
+		return stubModeStagePolicy{
+			requiresConfirmation: true,
+			reason:               fmt.Sprintf("%s is immutable/read-only", stageLabel),
+		}
+	}
+	if stageNameLooksProduction(title, shortName) {
+		return stubModeStagePolicy{
+			requiresConfirmation: true,
+			reason:               fmt.Sprintf("%s looks production-like by title or short_name", stageLabel),
+		}
+	}
+
+	return stubModeStagePolicy{
+		requiresConfirmation: false,
+		reason:               fmt.Sprintf("%s is mutable and does not look production-like", stageLabel),
+	}
 }
 
 // handlePullProcess downloads a process by ID and writes its JSON to disk in
@@ -58,7 +197,7 @@ func handlePullProcess(ctx context.Context, args map[string]interface{}) (string
 	fileName := fmt.Sprintf("%d.conv.json", processID)
 	if m, ok := procInfo.(map[string]interface{}); ok {
 		if title, _ := m["title"].(string); title != "" {
-			safeName := strings.ReplaceAll(title, " ", "_")
+			safeName := sanitizeFileSegment(title)
 			fileName = fmt.Sprintf("%d_%s.conv.json", processID, safeName)
 		}
 	}
@@ -95,11 +234,18 @@ func handlePullProcess(ctx context.Context, args map[string]interface{}) (string
 
 // handlePullFolder recursively downloads a folder (stage) and all its
 // processes/subfolders into the current working directory.
+// Before downloading processes, it attempts to sync the git mirror context
+// into .git-context/ (non-blocking — a git failure does not abort the pull).
 func handlePullFolder(ctx context.Context, args map[string]interface{}) (string, bool) {
 	folderID, err := intArg(args, "folder_id")
 	if err != nil {
 		return "Error: " + err.Error(), true
 	}
+
+	// Sync git mirror context before downloading processes.
+	// ensureGitContext handles elicitation of COREZOID_GIT_URL if missing,
+	// and silently skips on any error so the main pull always proceeds.
+	ensureGitContext(ctx)
 
 	v := NewValidator(ctx, 0)
 
@@ -110,6 +256,11 @@ func handlePullFolder(ctx context.Context, args map[string]interface{}) (string,
 	if err := downloadStageRecursively(v, folderID, "."); err != nil {
 		return fmt.Sprintf("Error fetching folder: %v", err), true
 	}
+
+	// In local/offline mode: regenerate CLAUDE.md from the freshly-downloaded
+	// .conv.json files (online mode copies it from the Gitea mirror instead).
+	regenerateLocalCLAUDEMDIfNeeded(ctx)
+
 	return fmt.Sprintf("Folder %d saved to current directory", folderID), false
 }
 
@@ -158,6 +309,24 @@ func handlePushProcess(ctx context.Context, args map[string]interface{}) (string
 		return fmt.Sprintf("Error loading JSON file: %v", err), true
 	}
 
+	// Coordinate re-hydration (see coords.go): if the process exists on the
+	// server and the local file lost any node coordinate (an edit dropped x/y,
+	// fully or partially), applyLayout below would move those nodes — and, if
+	// ALL are unplaced, re-lay-out the whole process. Refill lost coordinates
+	// from the server first so push preserves the arrangement; only genuinely-
+	// new nodes (absent on the server) stay unplaced and get placed normally.
+	var rehydrateNote string
+	if objID := extractObjIDFromJSON(jsonContent); objID != 0 && anyNodeUnplaced(jsonContent) {
+		if refilled, n := rehydrateCoordsFromServer(v, jsonContent); n > 0 {
+			// In-memory only: the refilled coordinates flow to the server via
+			// ProcessJSON below and are persisted to the file on success. We do
+			// NOT write the file here, so a later validation failure leaves the
+			// user's file untouched rather than silently baked with server coords.
+			jsonContent = refilled
+			rehydrateNote = fmt.Sprintf("Restored %d node coordinate(s) from the server — layout preserved.", n)
+		}
+	}
+
 	jsonContent1, messages := fixStruct(jsonContent, procID)
 	if len(messages) > 0 {
 		for _, msg := range messages {
@@ -177,6 +346,51 @@ func handlePushProcess(ctx context.Context, args map[string]interface{}) (string
 
 	if err := v.BeforeValidation(jsonContent, nil); err != nil {
 		return fmt.Sprintf("Validation failed: %v", err), true
+	}
+
+	// Structural lint gate: catch deploy-breaking / caller-breaking shapes
+	// offline before mutating the live process. Hard findings block the push;
+	// advisory findings (noop, unused set_param, orphans, passthrough, shared
+	// clusters) are surfaced but do not stop it. force=true overrides generic
+	// hard findings. Active Stub Mode has its own stage-aware gate because it
+	// bypasses the real called process at runtime.
+	force, _ := args["force"].(bool)
+	allowStubMode, _ := args["allow_active_stub_mode"].(bool)
+	var lintNote string // advisory findings surfaced on a proceeding push (see below)
+	if lintRes, lintErr := lintProcess(filePath); lintErr == nil {
+		stubMode := len(lintRes.StubModeNodes)
+		if stubMode > 0 {
+			policy := stubModeStagePolicyForPush(v, jsonContent)
+			if policy.requiresConfirmation && !allowStubMode {
+				return fmt.Sprintf("Push blocked: active Stub Mode found in %d node(s). Stub replies bypass the real called process and are intended as temporary development/integration placeholders. Target policy: %s. Disable Stub Mode, or re-run with allow_active_stub_mode=true after explicit confirmation.\n\n%s",
+					stubMode, policy.reason, FormatLintResult(lintRes)), true
+			}
+			if allowStubMode {
+				fmt.Fprintf(os.Stderr, "[lint] %d active Stub Mode node(s) allowed with allow_active_stub_mode=true (%s)\n", stubMode, policy.reason)
+			} else {
+				fmt.Fprintf(os.Stderr, "[lint] %d active Stub Mode node(s) are warning-only for this push (%s)\n", stubMode, policy.reason)
+			}
+		}
+		hard := len(lintRes.BrokenLinks) + len(lintRes.OldFormatNodes) +
+			len(lintRes.MissingDefaultGo) + len(lintRes.ShortTimers) +
+			len(lintRes.RpcReplyMismatches) + len(lintRes.LiteralReplyValues) +
+			len(lintRes.UnrepliedTerminals)
+		advisory := len(lintRes.NoopConditions) + len(lintRes.UnusedSetParams) +
+			len(lintRes.OrphanedNodes) + len(lintRes.PassthroughEscalations) +
+			len(lintRes.SharedErrorClusters)
+		if hard > 0 && !force {
+			return fmt.Sprintf("Push blocked: lint found %d issue(s) that would break the deploy or its callers. Fix them, or re-run with force=true to override.\n\n%s",
+				hard, FormatLintResult(lintRes)), true
+		}
+		if hard > 0 && force {
+			fmt.Fprintf(os.Stderr, "[lint] %d blocking issue(s) overridden with force=true\n", hard)
+		}
+		// The push proceeds. Surface any findings so the promise "advisory
+		// findings are shown but do not block" is actually kept — otherwise
+		// advisory-only issues would deploy silently and never be seen.
+		if hard+advisory+stubMode > 0 {
+			lintNote = FormatLintResult(lintRes)
+		}
 	}
 
 	// Auto-snapshot: if process already exists on server (obj_id != null/0),
@@ -205,9 +419,18 @@ func handlePushProcess(ctx context.Context, args map[string]interface{}) (string
 		return fmt.Sprintf("Error deploying process: %v", err), true
 	}
 
+	// In local mode: regenerate CLAUDE.md so the process index stays current.
+	regenerateLocalCLAUDEMDIfNeeded(ctx)
+
 	result := fmt.Sprintf("Process deployed successfully, ProcessID: %d", procID)
+	if rehydrateNote != "" {
+		result += "\n" + rehydrateNote
+	}
 	if snapshotNote != "" {
 		result += "\n" + snapshotNote
+	}
+	if lintNote != "" {
+		result += "\n\nLint (non-blocking, deployed anyway):\n" + lintNote
 	}
 	// Surface the git_call container build log so the user sees what the build
 	// service reported (progress + result), not just silence on success.
@@ -298,7 +521,10 @@ func handleRunTask(ctx context.Context, args map[string]interface{}) (string, bo
 		return fmt.Sprintf("Error parsing task data: %v", err), true
 	}
 
-	ref := fmt.Sprintf("%d_%d", time.Now().Unix(), rand.Intn(1000000))
+	ref := optStrArg(args, "ref")
+	if ref == "" {
+		ref = fmt.Sprintf("%d_%d", time.Now().Unix(), rand.Intn(1000000))
+	}
 	if err := v.createTask(ref, taskData); err != nil {
 		return fmt.Sprintf("Error creating task: %v", err), true
 	}
@@ -424,15 +650,21 @@ func createConv(ctx context.Context, args map[string]interface{}, convType strin
 		return "Error: " + err.Error(), true
 	}
 
-	folderID, err := resolveFolderIDFromDir(folderPath)
+	// An explicit folder_id always wins; otherwise the target is resolved
+	// from the local directory's <id>_<name>.folder.json marker. Either way
+	// the resolved target is reported back so a wrong destination is visible
+	// immediately instead of surfacing as a confusing server error.
+	folderID, resolvedFrom, err := resolveCreateTarget(args, folderPath)
 	if err != nil {
 		return fmt.Sprintf("Error resolving folder ID: %v", err), true
 	}
 
 	v := NewValidator(ctx, 0)
-	processID := v.CreateEmptyConv(folderID, processName, "", convType)
+	processID, cerr := v.CreateEmptyConv(folderID, processName, "", convType)
 	if processID == 0 {
-		return fmt.Sprintf("Error: failed to create %s '%s'", convType, processName), true
+		// Pass the server's reason through: "Stage is immutable" in the tool
+		// result is actionable, "failed to create" alone is not.
+		return fmt.Sprintf("Error: failed to create %s '%s' in folder #%d (%s): %v", convType, processName, folderID, resolvedFrom, cerr), true
 	}
 
 	procInfo1, err := v.ExportProcess()
@@ -450,7 +682,7 @@ func createConv(ctx context.Context, args map[string]interface{}, convType strin
 		return fmt.Sprintf("Error marshaling process: %v", err), true
 	}
 
-	safeName := strings.ReplaceAll(processName, " ", "_")
+	safeName := sanitizeFileSegment(processName)
 	fileName := fmt.Sprintf("%d_%s.json", processID, safeName)
 	filePath := filepath.Join(folderPath, fileName)
 	if err := os.WriteFile(filePath, data, 0644); err != nil {
@@ -461,7 +693,27 @@ func createConv(ctx context.Context, args map[string]interface{}, convType strin
 	if convType == "state" {
 		label = "State diagram"
 	}
-	return fmt.Sprintf("%s '%s' created and saved to %s", label, processName, filePath), false
+	return fmt.Sprintf("%s '%s' created in Corezoid folder #%d (%s) and saved to %s",
+		label, processName, folderID, resolvedFrom, filePath), false
+}
+
+// resolveCreateTarget picks the Corezoid folder a create lands in: an explicit
+// integer folder_id argument if given, else the local directory's marker file.
+// The second return value describes HOW the target was chosen, for the tool's
+// result message.
+func resolveCreateTarget(args map[string]interface{}, dir string) (int, string, error) {
+	if raw, ok := args["folder_id"]; ok {
+		id, err := intArg(args, "folder_id")
+		if err != nil {
+			return 0, "", fmt.Errorf("invalid folder_id %v: %v", raw, err)
+		}
+		return id, "explicit folder_id", nil
+	}
+	id, marker, err := resolveFolderIDFromDir(dir)
+	if err != nil {
+		return 0, "", err
+	}
+	return id, fmt.Sprintf("resolved from local marker %s in '%s'", marker, dir), nil
 }
 
 // handleCreateFolder creates a new folder under the given parent, mirrors it
@@ -474,7 +726,7 @@ func handleCreateFolder(ctx context.Context, args map[string]interface{}) (strin
 		return "Error: " + err.Error(), true
 	}
 
-	parentFolderID, err := resolveFolderIDFromDir(parentPath)
+	parentFolderID, parentResolvedFrom, err := resolveCreateTarget(args, parentPath)
 	if err != nil {
 		return fmt.Sprintf("Error resolving parent folder ID: %v", err), true
 	}
@@ -485,7 +737,7 @@ func handleCreateFolder(ctx context.Context, args map[string]interface{}) (strin
 		return fmt.Sprintf("Error creating folder '%s': %v", folderName, err), true
 	}
 
-	safeName := strings.ReplaceAll(folderName, " ", "_")
+	safeName := sanitizeFileSegment(folderName)
 	dirName := fmt.Sprintf("%d_%s", newFolderID, safeName)
 	dirPath := filepath.Join(parentPath, dirName)
 	if err := os.MkdirAll(dirPath, 0755); err != nil {
@@ -516,7 +768,8 @@ func handleCreateFolder(ctx context.Context, args map[string]interface{}) (strin
 		return fmt.Sprintf("Error writing folder file: %v", err), true
 	}
 
-	return fmt.Sprintf("Folder '%s' created and saved to %s", folderName, filePath), false
+	return fmt.Sprintf("Folder '%s' created in Corezoid folder #%d (%s) and saved to %s",
+		folderName, parentFolderID, parentResolvedFrom, filePath), false
 }
 
 // handleShowFolder returns metadata for a single folder (title, obj_type,
@@ -639,8 +892,17 @@ func handleDeleteFolder(ctx context.Context, args map[string]interface{}) (strin
 }
 
 // handleCreateAlias creates a Corezoid alias (short_name → conv) pointing at
-// the process whose ID is encoded in the file path. Requires a configured
-// COREZOID_STAGE_ID since aliases are stage-scoped.
+// the process whose ID is encoded in the file path.
+//
+// Aliases are stage-scoped, so we need to know which stage the target process
+// lives in. Resolution priority:
+//  1. explicit stage_id argument (belt-and-braces override for scripts);
+//  2. stage derived from the process file's parent_id (walk up folders until
+//     obj_type==3) — this is the correct answer for the target process and
+//     avoids the frozen-env failure mode where COREZOID_STAGE_ID pointed at a
+//     different project's stage and the server rejected with the cryptic
+//     "Object is not in stage";
+//  3. COREZOID_STAGE_ID from .env (legacy fallback for pre-parent_id files).
 func handleCreateAlias(ctx context.Context, args map[string]interface{}) (string, bool) {
 	filePath, err := resolveProcessPath(args, "process_path")
 	if err != nil {
@@ -657,13 +919,86 @@ func handleCreateAlias(ctx context.Context, args map[string]interface{}) (string
 	}
 
 	v := NewValidator(ctx, 0)
-	if v.StageID == 0 {
-		return "Error: COREZOID_STAGE_ID environment variable is not set or invalid", true
+
+	stageID, stageSrc, sErr := resolveAliasStageID(v, args, filePath)
+	if sErr != nil {
+		return "Error: " + sErr.Error(), true
 	}
-	aliasID, err := v.CreateAlias(shortName, procID, v.StageID)
+
+	aliasID, err := v.CreateAlias(shortName, procID, stageID)
 	if err != nil {
+		msg := err.Error()
+		if strings.Contains(strings.ToLower(msg), "object is not in stage") {
+			hint := fmt.Sprintf(" — the process (obj_id %d) does not live in stage %d (%s).", procID, stageID, stageSrc)
+			if v.StageID != 0 && v.StageID != stageID {
+				hint += fmt.Sprintf(" COREZOID_STAGE_ID is set to %d; that value was NOT used here.", v.StageID)
+			}
+			hint += " Pass an explicit stage_id, or pull-process this file again so its parent_id points at the current stage."
+			return fmt.Sprintf("Error creating alias: %s%s", msg, hint), true
+		}
 		return fmt.Sprintf("Error creating alias: %v", err), true
 	}
 
-	return fmt.Sprintf("Alias '%s' created successfully, AliasID: %d", shortName, aliasID), false
+	return fmt.Sprintf("Alias '%s' created successfully, AliasID: %d (stage %d, %s)", shortName, aliasID, stageID, stageSrc), false
+}
+
+// resolveAliasStageID picks the stage_id for a create-alias call. It returns
+// the resolved ID, a short label describing where it came from (for user
+// messages), and a hard error only if no source produced a usable stage.
+func resolveAliasStageID(v *Executor, args map[string]interface{}, filePath string) (int, string, error) {
+	if _, ok := args["stage_id"]; ok {
+		s, err := intArg(args, "stage_id")
+		if err != nil {
+			return 0, "", err
+		}
+		if s == 0 {
+			return 0, "", fmt.Errorf("stage_id argument is 0")
+		}
+		return s, "from stage_id argument", nil
+	}
+
+	if parentID, ok := readParentIDFromFile(filePath); ok && parentID != 0 {
+		stage, err := v.ResolveStageIDByFolder(parentID)
+		if err == nil && stage != 0 {
+			label := "derived from process parent_id"
+			if v.StageID != 0 && v.StageID != stage {
+				label = fmt.Sprintf("derived from process parent_id — overrides COREZOID_STAGE_ID=%d", v.StageID)
+			}
+			return stage, label, nil
+		}
+		if err != nil {
+			logger.Warn("create-alias: could not derive stage from parent_id %d: %v", parentID, err)
+		}
+	}
+
+	if v.StageID != 0 {
+		return v.StageID, "from COREZOID_STAGE_ID (fallback — process file had no parent_id)", nil
+	}
+	return 0, "", fmt.Errorf("could not resolve stage_id: process file has no parent_id, no stage_id argument was passed, and COREZOID_STAGE_ID is not set. Re-pull the process (so parent_id is written), pass stage_id explicitly, or set COREZOID_STAGE_ID.")
+}
+
+// readParentIDFromFile reads a .conv.json file just far enough to extract its
+// top-level parent_id. Returns (0, false) on any error — the caller is
+// expected to fall back gracefully; we never fail the tool because a file was
+// unparsable, that's the fallback's job.
+func readParentIDFromFile(filePath string) (int, bool) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return 0, false
+	}
+	var head struct {
+		ParentID interface{} `json:"parent_id"`
+	}
+	if err := json.Unmarshal(data, &head); err != nil {
+		return 0, false
+	}
+	switch p := head.ParentID.(type) {
+	case float64:
+		return int(p), p != 0
+	case string:
+		if n, err := strconv.Atoi(p); err == nil {
+			return n, n != 0
+		}
+	}
+	return 0, false
 }

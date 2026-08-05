@@ -55,20 +55,38 @@ var debug = debugFromEnv()
 // debugFromEnv reports whether COREZOID_DEBUG requests the detailed trace.
 // Split out so tests can exercise the wiring with t.Setenv.
 func debugFromEnv() bool { return os.Getenv("COREZOID_DEBUG") != "" }
+
 var apigwURL string
 var stageID int
 var insecureTLS bool
-// cachedProjectID is written once (protected by authStateMu) and then read-only.
-// Reset to 0 on every loadConfig so a workspace switch gets a fresh value.
+
+// cachedProjectID holds the project ID resolved by resolveProjectID (see
+// mcp_handlers_git.go), persisted to COREZOID_PROJECT_ID in the project .env
+// so it survives server restarts without a repeat API round-trip. It is keyed
+// by stage — resolveProjectID resolves it from COREZOID_STAGE_ID — so it is
+// explicitly cleared (in-memory and in .env) whenever WORKSPACE_ID or
+// COREZOID_STAGE_ID changes (handleLogin) or on logout — never silently reset
+// on every loadConfig.
 var cachedProjectID int
 
 // apiLogin and apiSecret are the Corezoid API key credentials (API_LOGIN /
 // API_SECRET). They provide an alternative to OAuth2 PKCE for environments
 // where browser-based authentication is not available. When both are set,
 // requests are signed using the Corezoid double-salted SHA1 pattern instead of using a Simulator bearer token.
-// These are distinct from gitLoginID / gitSecret which are used for git-sync.
+// The same credentials are reused for git mirror Basic auth (login_id:secret).
 var apiLogin string
 var apiSecret string
+
+// gitURL is the Corezoid git mirror base URL including org path
+// (e.g. https://git-dev.dev.corezoid.com/corezoid-dev). Set via COREZOID_GIT_URL.
+// apiLogin/apiSecret are reused for git Basic auth — no separate git credential needed.
+var gitURL string
+
+// gitStagePath is the relative path inside .git-context/ to the current stage
+// directory (e.g. "projects/123_Foo/stages/456_Bar"). Resolved once after
+// git-pull-context and saved to .env as COREZOID_GIT_STAGE_PATH so the agent
+// can reference it directly when reading CLAUDE.md or _ext/docs/*.
+var gitStagePath string
 
 // authSnapshot returns a coherent snapshot of the auth-state globals taken
 // under the read lock. Callers that subsequently need to mutate state must
@@ -85,6 +103,24 @@ func apiKeySnapshot() (login, secret string) {
 	authStateMu.RLock()
 	defer authStateMu.RUnlock()
 	return apiLogin, apiSecret
+}
+
+// gitConfigSnapshot returns a coherent snapshot of the git mirror config.
+// gitLogin/gitSecret reuse apiLogin/apiSecret (same Corezoid API key for both).
+// accountURLv is included so callers can derive COREZOID_GIT_URL when not set.
+// The project ID itself is not part of this snapshot — resolveProjectID
+// resolves/caches it via the shared resolveAndCacheProjectID (see main.go).
+func gitConfigSnapshot() (gitURLv, loginv, secretv, companyIDv, accountURLv string) {
+	authStateMu.RLock()
+	defer authStateMu.RUnlock()
+	return gitURL, apiLogin, apiSecret, workspaceID, accountURL
+}
+
+// gitStagePathSnapshot returns the resolved stage path inside .git-context/.
+func gitStagePathSnapshot() string {
+	authStateMu.RLock()
+	defer authStateMu.RUnlock()
+	return gitStagePath
 }
 
 // withAuthLock runs fn while holding the auth-state write lock. Use for
@@ -189,10 +225,27 @@ func loadConfig() {
 	stageID, _ = strconv.Atoi(os.Getenv("COREZOID_STAGE_ID"))
 	debug = debugFromEnv() // executor API trace; same switch as logger.IsDebug
 	insecureTLS = os.Getenv("COREZOID_INSECURE_TLS") != ""
-	cachedProjectID = 0              // reset on workspace switch so it is re-resolved
-	os.Unsetenv("COREZOID_PROJECT_ID") // prevent stale process env from short-circuiting resolution
+	// Loaded from .env, but only trusted if COREZOID_PROJECT_ID_STAGE_ID (written
+	// alongside it by resolveAndCacheProjectID) matches the stage we just loaded.
+	// Without this check, manually editing WORKSPACE_ID/COREZOID_STAGE_ID in .env
+	// (bypassing the login tool, which clears the cache on a real switch) would
+	// silently reuse a project ID resolved for a different stage — pointing
+	// git-pull-context/git-push-context at the wrong project's mirror repo.
+	if pid, _ := strconv.Atoi(os.Getenv("COREZOID_PROJECT_ID")); pid != 0 && projectIDStageMatches(stageID) {
+		cachedProjectID = pid
+	} else {
+		cachedProjectID = 0
+		os.Unsetenv("COREZOID_PROJECT_ID")
+		os.Unsetenv("COREZOID_PROJECT_ID_STAGE_ID")
+		if envPath := findDotEnvPath(); envPath != "" {
+			removeEnvKey(envPath, "COREZOID_PROJECT_ID")          //nolint:errcheck
+			removeEnvKey(envPath, "COREZOID_PROJECT_ID_STAGE_ID") //nolint:errcheck
+		}
+	}
 	apiLogin = os.Getenv("API_LOGIN")
 	apiSecret = os.Getenv("API_SECRET")
+	gitURL = os.Getenv("COREZOID_GIT_URL")
+	gitStagePath = os.Getenv("COREZOID_GIT_STAGE_PATH")
 }
 
 // runCLI executes a single MCP tool from the command line and exits.
@@ -205,8 +258,16 @@ func runCLI(toolName string, rawArgs []string) {
 		k, v, _ := strings.Cut(a, "=")
 		args[k] = v
 	}
-	// Apply env-based defaults so the tool works with zero arguments.
-	if _, ok := args["folder_id"]; !ok && stageID != 0 {
+	if cerr := coerceCLIArgs(toolName, args); cerr != nil {
+		fmt.Println("Error:", cerr)
+		os.Exit(1)
+	}
+	// Apply env-based defaults so folder tools work with zero arguments —
+	// but only where the schema REQUIRES folder_id (pull-folder & friends).
+	// Injecting it blindly into every call passed a junk argument to tools
+	// like login, and would silently redirect create-process away from its
+	// documented directory-based target resolution.
+	if _, ok := args["folder_id"]; !ok && stageID != 0 && toolRequiresArg(toolName, "folder_id") {
 		args["folder_id"] = stageID
 	}
 	// CLI mode runs to completion or until the user kills the process; we
@@ -324,6 +385,7 @@ var schemaDefinitions = []struct{ name, path string }{
 	{"process", "json-schema/process.json"},
 	{"node", "json-schema/node.json"},
 	{"condition", "json-schema/logics/condition.json"},
+	{"stub", "json-schema/logics/stub.json"},
 	{"logics", "json-schema/logics.json"},
 	{"semaphors", "json-schema/logics/semaphors.json"},
 	{"go", "json-schema/logics/go.json"},
@@ -485,6 +547,93 @@ func LoadBinFromFile(filePath string) (string, error) {
 	return string(fileContent), nil
 }
 
+func isProcessLogicObjType(objType int) bool {
+	return objType == 0 || objType == 4
+}
+
+func normalizeGoIfConstLogic(nodeID interface{}, logicMap map[string]interface{}, messages *[]string) {
+	funAliases := map[string]string{
+		"gte": "more_or_eq",
+		"lte": "less_or_eq",
+		"gt":  "more",
+		"lt":  "less",
+		"ne":  "not_eq",
+		"neq": "not_eq",
+	}
+	if conditions, ok := logicMap["conditions"].([]interface{}); ok {
+		for _, cond := range conditions {
+			if condMap, ok := cond.(map[string]interface{}); ok {
+				if fun, ok := condMap["fun"].(string); ok {
+					if replacement, found := funAliases[fun]; found {
+						condMap["fun"] = replacement
+						*messages = append(*messages,
+							fmt.Sprintf("go_if_const condition in node %v: \"fun\":\"%s\" replaced with \"fun\":\"%s\"", nodeID, fun, replacement))
+					}
+				}
+			}
+		}
+	}
+}
+
+func normalizeLogicForDeploy(nodeID interface{}, logicMap map[string]interface{}, messages *[]string) {
+	if convIDBin, ok := logicMap["conv_id"].(string); ok {
+		convID, err := strconv.Atoi(convIDBin)
+		if err == nil {
+			logicMap["conv_id"] = convID
+		}
+	}
+
+	logicType, _ := logicMap["type"].(string)
+	switch logicType {
+	case "go_if_const":
+		normalizeGoIfConstLogic(nodeID, logicMap, messages)
+	case "git_call", "api_git":
+		// git_call deploys via a separate container build (see BuildGitCallNodes).
+		// Mark the source valid so Commit accepts the node; the build runs
+		// between compile and commit.
+		if _, set := logicMap["code_error"]; !set {
+			logicMap["code_error"] = false
+		}
+	case "api":
+		if extra, ok := logicMap["extra"].(map[string]interface{}); ok {
+			if body, ok := extra["body"].(string); ok && len(extra) == 1 {
+				// then body to raw_body field and extra["body"] to delete
+				logicMap["raw_body"] = body
+				logicMap["format"] = "raw"
+				logicMap["extra"] = make(map[string]interface{})
+				logicMap["extra_type"] = make(map[string]interface{})
+				*messages = append(*messages,
+					fmt.Sprintf("Logic \"api\" in the node %v was fixed. If you need to pass a variable %s as the entire body part, Instead of \"extra\" and \"extra_type\" you need to use then fields: \"raw_body\":\"%s\", \"format\":\"raw\". I am already fixed it. You don't need to change anything anymore", nodeID, body, body))
+			}
+		} else {
+			logicMap["extra"] = make(map[string]interface{})
+			logicMap["extra_type"] = make(map[string]interface{})
+		}
+	}
+}
+
+func normalizeStubForDeploy(nodeID interface{}, condition map[string]interface{}, messages *[]string) {
+	stub, ok := condition["stub"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	branches, ok := stub["logics"].([]interface{})
+	if !ok {
+		return
+	}
+	for _, branch := range branches {
+		branchItems, ok := branch.([]interface{})
+		if !ok {
+			continue
+		}
+		for _, item := range branchItems {
+			if logicMap, ok := item.(map[string]interface{}); ok {
+				normalizeLogicForDeploy(nodeID, logicMap, messages)
+			}
+		}
+	}
+}
+
 func fixStruct(dataBin string, inProcessID int) (string, []string) {
 	messages := make([]string, 0)
 	var data map[string]interface{}
@@ -504,7 +653,7 @@ func fixStruct(dataBin string, inProcessID int) (string, []string) {
 		for _, node := range nodes {
 			if nodeMap, ok := node.(map[string]interface{}); ok {
 				objTypeF, _ := nodeMap["obj_type"].(float64)
-				if int(objTypeF) == 0 {
+				if isProcessLogicObjType(int(objTypeF)) {
 					//	for by logics
 					condition, ok := nodeMap["condition"].(map[string]interface{})
 					if !ok {
@@ -515,62 +664,11 @@ func fixStruct(dataBin string, inProcessID int) (string, []string) {
 					if logics, ok := condition["logics"].([]interface{}); ok {
 						for _, logic := range logics {
 							if logicMap, ok := logic.(map[string]interface{}); ok {
-								if convIDBin, ok := logicMap["conv_id"].(string); ok {
-									convID, err := strconv.Atoi(convIDBin)
-									if err == nil {
-										logicMap["conv_id"] = convID
-									}
-								}
-								if logicMap["type"] == "go_if_const" {
-									funAliases := map[string]string{
-										"gte": "more_or_eq",
-										"lte": "less_or_eq",
-										"gt":  "more",
-										"lt":  "less",
-										"ne":  "not_eq",
-										"neq": "not_eq",
-									}
-									if conditions, ok := logicMap["conditions"].([]interface{}); ok {
-										for _, cond := range conditions {
-											if condMap, ok := cond.(map[string]interface{}); ok {
-												if fun, ok := condMap["fun"].(string); ok {
-													if replacement, found := funAliases[fun]; found {
-														condMap["fun"] = replacement
-														messages = append(messages,
-															fmt.Sprintf("go_if_const condition in node %s: \"fun\":\"%s\" replaced with \"fun\":\"%s\"", nodeMap["id"], fun, replacement))
-													}
-												}
-											}
-										}
-									}
-								}
-								if logicMap["type"] == "git_call" || logicMap["type"] == "api_git" {
-									// git_call deploys via a separate container build (see BuildGitCallNodes).
-									// Mark the source valid so Commit accepts the node; the build runs
-									// between compile and commit.
-									if _, set := logicMap["code_error"]; !set {
-										logicMap["code_error"] = false
-									}
-								}
-								if logicMap["type"] == "api" {
-									if extra, ok := logicMap["extra"].(map[string]interface{}); ok {
-										if body, ok := extra["body"].(string); ok && len(extra) == 1 {
-											//	then body to raw_body field and extra["body"] to delete
-											logicMap["raw_body"] = body
-											logicMap["format"] = "raw"
-											logicMap["extra"] = make(map[string]interface{})
-											logicMap["extra_type"] = make(map[string]interface{})
-											messages = append(messages,
-												fmt.Sprintf("Logic \"api\" in the node %s was fixed. If you need to pass a variable %s as the entire body part, Instead of \"extra\" and \"extra_type\" you need to use then fields: \"raw_body\":\"%s\", \"format\":\"raw\". I am already fixed it. You don't need to change anything anymore", nodeMap["id"], body, body))
-										}
-									} else {
-										logicMap["extra"] = make(map[string]interface{})
-										logicMap["extra_type"] = make(map[string]interface{})
-									}
-								}
+								normalizeLogicForDeploy(nodeMap["id"], logicMap, &messages)
 							}
 						}
 					}
+					normalizeStubForDeploy(nodeMap["id"], condition, &messages)
 				}
 				if options, ok := nodeMap["options"].(map[string]interface{}); ok {
 					optionsStr, err := json.Marshal(options)
@@ -601,7 +699,8 @@ func fixStruct(dataBin string, inProcessID int) (string, []string) {
 // resolveAndCacheProjectID returns the project ID for the current stage and an
 // optional user-visible notice when COREZOID_PROJECT_ID is written to .env for
 // the first time. The notice is non-empty only on the first API resolution.
-// Priority: in-memory cache → COREZOID_PROJECT_ID env var → API (ShowFolder).
+// Priority: in-memory cache → COREZOID_PROJECT_ID env var (only if recorded for
+// the current stage, see projectIDStageMatches) → API (ShowFolder).
 // Thread-safe: reads under RLock, writes under Lock.
 func resolveAndCacheProjectID(v *Executor) (int, string) {
 	// Fast path: cache hit (read lock only).
@@ -612,9 +711,11 @@ func resolveAndCacheProjectID(v *Executor) (int, string) {
 		return id, ""
 	}
 
-	// Try env var (no API call needed).
+	// Try env var (no API call needed) — only trust it if COREZOID_PROJECT_ID_STAGE_ID
+	// confirms it was resolved for this exact stage (see loadConfig for the
+	// equivalent startup-time check).
 	if s := os.Getenv("COREZOID_PROJECT_ID"); s != "" {
-		if parsed, err := strconv.Atoi(s); err == nil && parsed != 0 {
+		if parsed, err := strconv.Atoi(s); err == nil && parsed != 0 && projectIDStageMatches(v.StageID) {
 			withAuthLock(func() { cachedProjectID = parsed })
 			return parsed, ""
 		}
@@ -629,12 +730,35 @@ func resolveAndCacheProjectID(v *Executor) (int, string) {
 		return 0, ""
 	}
 	withAuthLock(func() { cachedProjectID = resolved })
+	wasEmpty := os.Getenv("COREZOID_PROJECT_ID") == ""
 	os.Setenv("COREZOID_PROJECT_ID", strconv.Itoa(resolved))
-	if written := appendToDotEnv("COREZOID_PROJECT_ID", strconv.Itoa(resolved)); written {
+	os.Setenv("COREZOID_PROJECT_ID_STAGE_ID", strconv.Itoa(v.StageID))
+	// Always (over)write both keys together — unlike the old append-only-if-absent
+	// behavior, a stale COREZOID_PROJECT_ID left over from a different stage must
+	// not survive in .env once we've resolved a fresh value for this one.
+	if envPath := findDotEnvPath(); envPath != "" {
+		withAuthLock(func() {
+			updateEnvFile(envPath, "COREZOID_PROJECT_ID", strconv.Itoa(resolved))          //nolint:errcheck
+			updateEnvFile(envPath, "COREZOID_PROJECT_ID_STAGE_ID", strconv.Itoa(v.StageID)) //nolint:errcheck
+		})
+	}
+	if wasEmpty {
 		notice := fmt.Sprintf("(COREZOID_PROJECT_ID=%d saved to .env for future use)", resolved)
 		return resolved, notice
 	}
 	return resolved, ""
+}
+
+// projectIDStageMatches reports whether COREZOID_PROJECT_ID_STAGE_ID in the
+// environment matches stageID — i.e. whether a cached COREZOID_PROJECT_ID was
+// actually resolved for the stage we're currently on, not left over from a
+// stage/workspace switch that bypassed the login tool's cache invalidation.
+func projectIDStageMatches(stageID int) bool {
+	if stageID == 0 {
+		return false
+	}
+	saved, err := strconv.Atoi(os.Getenv("COREZOID_PROJECT_ID_STAGE_ID"))
+	return err == nil && saved == stageID
 }
 
 // appendToDotEnv appends key=value to the nearest .env file if the key is absent.
