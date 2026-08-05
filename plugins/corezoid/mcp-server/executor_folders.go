@@ -194,6 +194,31 @@ func (v *Executor) DeleteFolder(folderID int) error {
 	return nil
 }
 
+// MoveProcess moves a process (conv) to a different folder within the same
+// stage. The process keeps its conv_id, aliases, and active tasks — only the
+// parent folder changes. The API operation is {"type":"link","obj":"folder",
+// "obj_type":"conv","obj_id":<process_id>,"folder_id":<target_folder_id>}.
+// parent_id is the folder the process is currently in (moved from).
+func (v *Executor) MoveProcess(processID, targetFolderID, parentFolderID int) error {
+	op := map[string]any{
+		"type":       "link",
+		"obj":        "folder",
+		"obj_type":   "conv",
+		"obj_id":     processID,
+		"folder_id":  targetFolderID,
+		"parent_id":  parentFolderID,
+		"company_id": v.WorkspaceID,
+	}
+	resp, err := v.req("json", []map[string]any{op})
+	if err != nil {
+		return fmt.Errorf("MoveProcess request failed: %w", err)
+	}
+	if _, err := firstOp(resp); err != nil {
+		return err
+	}
+	return nil
+}
+
 // CreateFolder creates a new folder under parentFolderID and returns the new folder's obj_id.
 func (v *Executor) CreateFolder(parentFolderID int, title, desc string) (int, error) {
 	createOp := map[string]any{

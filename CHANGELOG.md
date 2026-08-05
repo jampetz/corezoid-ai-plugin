@@ -1,5 +1,9 @@
 # Changelog
 
+## [2.12.0]
+
+- Feat(mcp): new `move-process` tool — moves a process (or state diagram) to a different folder within the same stage via a `link` op against `/api/2/json`, preserving `conv_id`, aliases, and active tasks.
+
 ## [2.11.0]
 
 - Feat: new `corezoid-git-context` skill + four MCP tools — `git-pull-context`, `git-push-context`, `read-context-file`, `update-context-file` — that sync a project's `.git-context/` with the Corezoid Gitea mirror (with a transparent local-only fallback when Gitea is unreachable), merge Developer Notes and a process index into `CLAUDE.md` via a marker block that leaves hand-authored content intact, and let Claude read/write `_ext/` documentation without touching the process JSON tree. `pull-folder` and `push-process` sync context and regenerate `CLAUDE.md` as part of their normal flow; per-invocation Basic auth goes via `GIT_CONFIG_*` env vars and is never persisted to `.git/config`.

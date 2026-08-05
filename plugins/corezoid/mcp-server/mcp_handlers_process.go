@@ -891,6 +891,29 @@ func handleDeleteFolder(ctx context.Context, args map[string]interface{}) (strin
 	return fmt.Sprintf("Folder #%d moved to Trash.", folderID), false
 }
 
+// handleMoveProcess moves a process to a different folder within the same
+// stage. The process keeps its conv_id, aliases, and active tasks.
+func handleMoveProcess(ctx context.Context, args map[string]interface{}) (string, bool) {
+	processID, err := intArg(args, "process_id")
+	if err != nil {
+		return "Error: " + err.Error(), true
+	}
+	targetFolderID, err := intArg(args, "target_folder_id")
+	if err != nil {
+		return "Error: " + err.Error(), true
+	}
+	parentFolderID, err := intArg(args, "parent_id")
+	if err != nil {
+		return "Error: " + err.Error(), true
+	}
+
+	v := NewValidator(ctx, 0)
+	if err := v.MoveProcess(processID, targetFolderID, parentFolderID); err != nil {
+		return fmt.Sprintf("Error: %v", err), true
+	}
+	return fmt.Sprintf("Process #%d moved to folder #%d.", processID, targetFolderID), false
+}
+
 // handleCreateAlias creates a Corezoid alias (short_name → conv) pointing at
 // the process whose ID is encoded in the file path.
 //

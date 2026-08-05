@@ -41,6 +41,7 @@ var toolHandlers = map[string]toolHandler{
 	"modify-folder":        handleModifyFolder,
 	"delete-folder":        handleDeleteFolder,
 	"delete-process":       handleDeleteProcess,
+	"move-process":         handleMoveProcess,
 	"create-alias":         handleCreateAlias,
 
 	// discovery

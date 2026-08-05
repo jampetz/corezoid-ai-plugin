@@ -378,6 +378,28 @@ var toolRegistry = []mcpTool{
 		},
 	},
 	{
+		Name:        "move-process",
+		Description: "Move a Corezoid process (or state diagram) to a different folder. The process keeps its conv_id, aliases, and active tasks — only the parent folder changes. Both the process and the target folder must be within the same stage.",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"process_id": map[string]interface{}{
+					"type":        "integer",
+					"description": "Corezoid process ID to move",
+				},
+				"target_folder_id": map[string]interface{}{
+					"type":        "integer",
+					"description": "Destination folder ID where the process will be moved to",
+				},
+				"parent_id": map[string]interface{}{
+					"type":        "integer",
+					"description": "Current parent folder ID of the process",
+				},
+			},
+			"required": []string{"process_id", "target_folder_id", "parent_id"},
+		},
+	},
+	{
 		Name:        "create-alias",
 		Description: "Create a short alias for a Corezoid process. Aliases are stage-scoped; the stage is derived from the process file's parent_id (walking up folders until a stage is reached), so a stale COREZOID_STAGE_ID in .env no longer produces the cryptic \"Object is not in stage\" error. Pass stage_id explicitly to override.",
 		InputSchema: map[string]interface{}{

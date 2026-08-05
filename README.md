@@ -248,6 +248,7 @@ validation errors, and summarize what each process does.
 | `modify-folder`     | Rename a folder or update its description          |
 | `delete-folder`     | Move a folder to the recycle bin                   |
 | `delete-process`    | Move a process or state diagram to the recycle bin |
+| `move-process`      | Move a process to a different folder (preserves conv_id) |
 | `create-alias`      | Create a short alias for a process                 |
 | `create-variable`   | Create a Corezoid environment variable             |
 | `list-variables`    | List a stage's environment variables (secrets masked) |
@@ -318,7 +319,8 @@ Claude Code / Codex
         │                 create-process, create-state-diagram, create-folder,
         │                 create-alias, create-variable,
         │                 list-variables, modify-variable, delete-variable,
-        │                 show-folder, list-folders, modify-folder, delete-folder, delete-process
+        │                 show-folder, list-folders, modify-folder, delete-folder, delete-process,
+        │                 move-process
         ├── Tasks         run-task, list-node-tasks, list-task-history, get-node-stat,
         │                 modify-task, delete-task
         ├── Snapshots     create-snapshot, list-snapshots, delete-snapshot, get-snapshot
